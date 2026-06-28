@@ -1,4 +1,5 @@
 from django.db import models
+from decimal import Decimal
 
 
 class Animal(models.Model):
@@ -29,8 +30,8 @@ class Animal(models.Model):
     weight_kg = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     location = models.CharField(max_length=120, blank=True)
     origin = models.CharField(max_length=30, choices=Origin.choices, default=Origin.BORN_IN_HERD)
-    purchase_cost = models.DecimalField(max_digits=12, decimal_places=2, default=0)
-    current_value = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    purchase_cost = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("1.00"))
+    current_value = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("1.00"))
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -46,7 +47,7 @@ class Animal(models.Model):
 
     def save(self, *args, **kwargs):
         if self.origin == self.Origin.BORN_IN_HERD:
-            self.purchase_cost = 0
+            self.purchase_cost = 1
         super().save(*args, **kwargs)
 
 
