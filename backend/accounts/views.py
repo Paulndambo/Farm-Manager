@@ -1,0 +1,43 @@
+from django.contrib.auth import get_user_model
+from rest_framework import status, viewsets
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework_simplejwt.views import TokenObtainPairView
+
+from .permissions import IsActiveFarmUser, IsAdminRole
+from .serializers import CurrentUserSerializer, EmailTokenObtainPairSerializer, UserSerializer
+
+User = get_user_model()
+
+
+class EmailTokenObtainPairView(TokenObtainPairView):
+    serializer_class = EmailTokenObtainPairSerializer
+    permission_classes = []
+
+
+@api_view(["GET"])
+@permission_classes([IsActiveFarmUser])
+def me(request):
+    return Response(CurrentUserSerializer(request.user).data)
+
+
+class UserViewSet(viewsets.ModelViewSet):
+    serializer_class = UserSerializer
+    permission_classes = [IsAdminRole]
+
+    def get_queryset(self):
+        return User.objects.filter(farm=self.request.user.farm).exclude(id=self.request.user.id)
+
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        if user.role == User.Role.ADMIN:
+            return Response({"detail": "Admin users cannot be deleted from this endpoint."}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="toggle-status")
+    def toggle_status(self, request, pk=None):
+        user = self.get_object()
+        user.status = User.Status.DISABLED if user.status == User.Status.ACTIVE else User.Status.ACTIVE
+        user.is_active = user.status == User.Status.ACTIVE
+        user.save(update_fields=["status", "is_active"])
+        return Response(self.get_serializer(user).data)

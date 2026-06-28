@@ -11,6 +11,7 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, PieChart, Pie, Cell, BarChart, Bar,
 } from "recharts";
+import { api } from "./api";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SPECIES      = ["Cattle","Goat","Sheep","Pig","Chicken","Horse","Other"];
@@ -24,18 +25,6 @@ const EXPENSE_CATS   = ["Animal purchase","Feed purchase","Veterinary","Medicati
 const PIE_COLORS     = ["#A23B2E","#D9A441","#3F5D45","#8A7B62","#6C4F3D","#C97B53","#5B7A8C"];
 const BAR_REVENUE    = "#3F5D45";
 const BAR_EXPENSE    = "#A23B2E";
-
-const STORAGE_KEYS = {
-  animals:      "farm_animals",
-  vaccinations: "farm_vaccinations",
-  growth:       "farm_growth",
-  feed:         "farm_feed",
-  health:       "farm_health_events",
-  sales:        "farm_sales",
-  expenses:     "farm_expenses",
-  users:        "farm_users",
-  session:      "farm_session_v2",
-};
 
 const PAGE_TITLES = {
   dashboard:    "Farm Overview",
@@ -104,6 +93,23 @@ function currencyShort(n) {
 function monthKey(d)    { return (d||"").slice(0,7); }
 function monthLabel(ym) { const [y,m]=ym.split("-"); return new Date(+y,+m-1,1).toLocaleDateString("en-GB",{month:"short",year:"2-digit"}); }
 
+function animalGain(a) {
+  return (Number(a.currentValue) || 0) - (Number(a.purchaseCost) || 0);
+}
+
+function animalRoi(a) {
+  const cost = Number(a.purchaseCost) || 0;
+  const current = Number(a.currentValue) || 0;
+  if (!cost) return current > 0 ? Infinity : null;
+  return (animalGain(a) / cost) * 100;
+}
+
+function roiLabel(value) {
+  if (value === null) return "-";
+  if (!Number.isFinite(value)) return "New value";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
 function statusTone(s) {
   if (s === "Healthy")   return "success";
   if (s === "Sick" || s === "Deceased") return "danger";
@@ -119,21 +125,6 @@ function initials(name) {
 
 function findUserByEmail(users, email) {
   return users.find(u => u.email.toLowerCase() === (email||"").trim().toLowerCase());
-}
-
-async function loadKey(key, setter) {
-  try {
-    const r = await window.storage.get(key, false);
-    if (r?.value) setter(JSON.parse(r.value));
-  } catch(e) {}
-}
-
-async function persist(key, value) {
-  try { await window.storage.set(key, JSON.stringify(value), false); } catch(e) {}
-}
-
-async function deleteKey(key) {
-  try { await window.storage.delete(key, false); } catch(e) {}
 }
 
 // ─── Tiny shared UI ───────────────────────────────────────────────────────────
@@ -204,7 +195,7 @@ function AnimalForm({ onSubmit, onClose, initial }) {
   const [form, setForm] = useState(initial || {
     tagId:"", name:"", species:SPECIES[0], breed:"", sex:SEX_OPTIONS[0],
     dob:"", status:"Healthy", weightKg:"", location:"",
-    origin:ORIGIN_OPTIONS[0], purchaseCost:"", notes:"",
+    origin:ORIGIN_OPTIONS[0], purchaseCost:"", currentValue:"", notes:"",
   });
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
   const isPurchased = form.origin === "Purchased";
@@ -216,6 +207,7 @@ function AnimalForm({ onSubmit, onClose, initial }) {
       ...form,
       weightKg:     form.weightKg     ? parseFloat(form.weightKg)     : null,
       purchaseCost: isPurchased       ? parseFloat(form.purchaseCost)||0 : 0,
+      currentValue: form.currentValue ? parseFloat(form.currentValue)||0 : 0,
     });
   }
 
@@ -249,9 +241,10 @@ function AnimalForm({ onSubmit, onClose, initial }) {
           </select>
         </label>
         {isPurchased
-          ? <label>Purchase cost *<input type="number" min="0" step="0.01" value={form.purchaseCost} onChange={set("purchaseCost")} placeholder="e.g. 15000" required/></label>
+          ? <label>Purchase cost *<input type="number" min="0" step="0.01" value={form.purchaseCost} onChange={e=>setForm(f=>({...f,purchaseCost:e.target.value,currentValue:f.currentValue||e.target.value}))} placeholder="e.g. 15000" required/></label>
           : <label>Purchase cost<input value="0 — born in herd" disabled/></label>
         }
+        <label>Current value<input type="number" min="0" step="0.01" value={form.currentValue} onChange={set("currentValue")} placeholder="Estimated sale value"/></label>
         <label className="span-2">Pen / location<input value={form.location} onChange={set("location")} placeholder="e.g. North Paddock"/></label>
         <label className="span-2">Notes / remarks<textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="Any additional notes about this animal…"/></label>
       </div>
@@ -480,6 +473,8 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
   const health  = healthEvents.filter(h=>h.animalId===animal.id).sort((a,b)=>a.date<b.date?1:-1);
   const chartData = growth.map(g=>({label:formatDate(g.date),weight:g.weightKg}));
   const openIssues = health.filter(h=>!h.resolved).length;
+  const roi = animalRoi(animal);
+  const gain = animalGain(animal);
 
   let withGain = [], prev = null;
   [...growth].reverse().forEach(g=>{
@@ -517,6 +512,9 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
           <div><span className="muted small">Location</span><strong>{animal.location||"—"}</strong></div>
           <div><span className="muted small">Origin</span><strong>{animal.origin||"—"}</strong></div>
           <div><span className="muted small">Purchased for</span><strong className="mono">{animal.origin==="Purchased"?(animal.purchaseCost||0).toLocaleString():"0"}</strong></div>
+          <div><span className="muted small">Current value</span><strong className="mono">{currency(animal.currentValue)}</strong></div>
+          <div><span className="muted small">Value gain / loss</span><strong className={`mono ${gain>=0?"trend-up":"trend-down"}`}>{gain>=0?"+":"-"}{currency(Math.abs(gain))}</strong></div>
+          <div><span className="muted small">Animal ROI</span><strong className={`mono ${roi===null||roi>=0?"trend-up":"trend-down"}`}>{roiLabel(roi)}</strong></div>
         </div>
 
         {/* Tabs */}
@@ -675,6 +673,10 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
   const thisMonthKey  = monthKey(todayStr());
   const monthRev      = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthExp      = (expenses||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const totalPurchaseValue = animals.reduce((sum,a)=>sum+(Number(a.purchaseCost)||0),0);
+  const totalCurrentValue  = animals.reduce((sum,a)=>sum+(Number(a.currentValue)||0),0);
+  const herdValueGain      = totalCurrentValue - totalPurchaseValue;
+  const herdRoi            = totalPurchaseValue>0 ? (herdValueGain/totalPurchaseValue)*100 : (totalCurrentValue>0 ? Infinity : null);
 
   const speciesData = useMemo(()=>{
     const c={};
@@ -728,6 +730,12 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
         <StatCard icon={Wheat}          label="Feed items low"    value={lowFeedCt} sub="at or below reorder level" tone="gold"/>
         <StatCard icon={PawPrint}       label="Quarantine"        value={animals.filter(a=>a.status==="Quarantine").length} sub="isolated animals" tone="ink"/>
         <StatCard icon={CheckCircle2}   label="Sold / deceased"   value={animals.filter(a=>["Sold","Deceased"].includes(a.status)).length} sub="off active register" tone="ink"/>
+      </div>
+      <div className="stat-row">
+        <StatCard icon={Receipt}         label="Purchase basis"    value={currencyShort(totalPurchaseValue)} sub="recorded acquisition cost" tone="ink"/>
+        <StatCard icon={BadgeDollarSign} label="Current herd value"value={currencyShort(totalCurrentValue)} sub="estimated sale value" tone="green"/>
+        <StatCard icon={herdValueGain>=0?TrendingUp:TrendingDown} label="Unrealized value" value={currencyShort(Math.abs(herdValueGain))} sub={herdValueGain>=0?"appreciation":"depreciation"} tone={herdValueGain>=0?"green":"rust"}/>
+        <StatCard icon={Wallet}          label="Herd ROI"          value={roiLabel(herdRoi)} sub="current value vs purchase" tone={herdRoi===null||herdRoi>=0?"gold":"rust"}/>
       </div>
 
       {/* Finance summary strip */}
@@ -913,7 +921,7 @@ function AnimalsPage({ animals, vaccinations, growthRecords, healthEvents, onAdd
               <tr>
                 <th>Ear tag</th><th>Name</th><th>Species</th><th>Breed</th>
                 <th>Sex</th><th>Age</th><th>Status</th><th>Weight</th>
-                <th>Origin</th><th>Location</th><th>Issues</th><th/>
+                <th>Value</th><th>ROI</th><th>Origin</th><th>Location</th><th>Issues</th><th/>
               </tr>
             </thead>
             <tbody>
@@ -927,6 +935,8 @@ function AnimalsPage({ animals, vaccinations, growthRecords, healthEvents, onAdd
                   <td className="mono">{calcAge(a.dob)}</td>
                   <td><Badge tone={statusTone(a.status)}>{a.status}</Badge></td>
                   <td className="mono">{a.weightKg?`${a.weightKg} kg`:"—"}</td>
+                  <td className="mono">{a.currentValue?currencyShort(a.currentValue):"—"}</td>
+                  <td className={`mono ${animalRoi(a)===null||animalRoi(a)>=0?"trend-up":"trend-down"}`}>{roiLabel(animalRoi(a))}</td>
                   <td><Badge tone={a.origin==="Purchased"?"warning":"neutral"}>{a.origin||"—"}</Badge></td>
                   <td>{a.location||"—"}</td>
                   <td>{openHealth(a.id)>0?<Badge tone="danger">{openHealth(a.id)}</Badge>:"—"}</td>
@@ -1138,16 +1148,21 @@ function UsersPage({ users, currentUser, onAdd, onEdit, onToggleStatus, onDelete
   );
 }
 
-function LoginPage({ users, onLogin }) {
+function LoginPage({ onLogin }) {
   const [email, setEmail]       = useState("");
   const [password, setPassword] = useState("");
   const [error, setError]       = useState("");
-  function handleSubmit(e) {
+  const [submitting, setSubmitting] = useState(false);
+  async function handleSubmit(e) {
     e.preventDefault(); setError("");
-    const user = findUserByEmail(users, email);
-    if (!user||user.password!==password) { setError("Incorrect email or password."); return; }
-    if (user.status!=="Active") { setError("This account has been disabled. Contact your farm admin."); return; }
-    onLogin(user);
+    setSubmitting(true);
+    try {
+      await onLogin(email, password);
+    } catch (err) {
+      setError(err.message || "Incorrect email or password.");
+    } finally {
+      setSubmitting(false);
+    }
   }
   return (
     <div className="login-screen">
@@ -1162,9 +1177,9 @@ function LoginPage({ users, onLogin }) {
             <label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required/></label>
           </div>
           {error&&<p className="form-error">{error}</p>}
-          <button type="submit" className="btn btn--primary" style={{width:"100%",justifyContent:"center",marginTop:14}}><Lock size={15}/>Sign in</button>
+          <button type="submit" className="btn btn--primary" style={{width:"100%",justifyContent:"center",marginTop:14}} disabled={submitting}><Lock size={15}/>{submitting?"Signing in...":"Sign in"}</button>
         </form>
-        {users.length<=1&&<p className="muted small login-hint">Default account: <span className="mono">admin@farm.local</span> / <span className="mono">admin123</span></p>}
+        <p className="muted small login-hint">Default account: <span className="mono">admin@farm.local</span> / <span className="mono">admin123</span></p>
         <p className="muted small login-hint">Accounts are created by your admin — there is no self-registration.</p>
       </div>
     </div>
@@ -1528,11 +1543,11 @@ function ExpensesPage({ expenses, onAdd, onDelete }) {
 
 // ─── Sample data ──────────────────────────────────────────────────────────────
 function buildSampleData() {
-  const a1={id:uid(),tagId:"CT-014",name:"Bramble",species:"Cattle",breed:"Jersey",sex:"Female",dob:"2022-03-10",status:"Healthy",weightKg:328,location:"North Paddock",origin:"Born in herd",purchaseCost:0,notes:"Top milk producer"};
-  const a2={id:uid(),tagId:"CT-015",name:"Rosie",species:"Cattle",breed:"Friesian",sex:"Female",dob:"2021-11-05",status:"Pregnant",weightKg:385,location:"North Paddock",origin:"Purchased",purchaseCost:42000,notes:"Due in ~6 weeks"};
-  const a3={id:uid(),tagId:"GT-002",name:"Pepper",species:"Goat",breed:"Boer",sex:"Female",dob:"2023-05-01",status:"Healthy",weightKg:38,location:"Goat Pen A",origin:"Purchased",purchaseCost:9500,notes:""};
-  const a4={id:uid(),tagId:"SH-021",name:"Clover",species:"Sheep",breed:"Dorper",sex:"Female",dob:"2023-01-18",status:"Healthy",weightKg:56,location:"South Field",origin:"Born in herd",purchaseCost:0,notes:""};
-  const a5={id:uid(),tagId:"PG-007",name:"Wilbur",species:"Pig",breed:"Landrace",sex:"Male",dob:"2024-03-22",status:"Sick",weightKg:71,location:"Sty 2",origin:"Purchased",purchaseCost:6000,notes:"Bought at Githunguri market"};
+  const a1={id:uid(),tagId:"CT-014",name:"Bramble",species:"Cattle",breed:"Jersey",sex:"Female",dob:"2022-03-10",status:"Healthy",weightKg:328,location:"North Paddock",origin:"Born in herd",purchaseCost:0,currentValue:58000,notes:"Top milk producer"};
+  const a2={id:uid(),tagId:"CT-015",name:"Rosie",species:"Cattle",breed:"Friesian",sex:"Female",dob:"2021-11-05",status:"Pregnant",weightKg:385,location:"North Paddock",origin:"Purchased",purchaseCost:42000,currentValue:54000,notes:"Due in ~6 weeks"};
+  const a3={id:uid(),tagId:"GT-002",name:"Pepper",species:"Goat",breed:"Boer",sex:"Female",dob:"2023-05-01",status:"Healthy",weightKg:38,location:"Goat Pen A",origin:"Purchased",purchaseCost:9500,currentValue:12800,notes:""};
+  const a4={id:uid(),tagId:"SH-021",name:"Clover",species:"Sheep",breed:"Dorper",sex:"Female",dob:"2023-01-18",status:"Healthy",weightKg:56,location:"South Field",origin:"Born in herd",purchaseCost:0,currentValue:10300,notes:""};
+  const a5={id:uid(),tagId:"PG-007",name:"Wilbur",species:"Pig",breed:"Landrace",sex:"Male",dob:"2024-03-22",status:"Sick",weightKg:71,location:"Sty 2",origin:"Purchased",purchaseCost:6000,currentValue:5200,notes:"Bought at Githunguri market"};
   const animals=[a1,a2,a3,a4,a5];
 
   const now=new Date();
@@ -1620,6 +1635,7 @@ export default function FarmApp() {
   const [expenses, setExpenses]         = useState([]);
   const [users, setUsers]               = useState([]);
   const [currentUser, setCurrentUser]   = useState(null);
+  const [apiError, setApiError]         = useState("");
 
   // modals
   const [showAnimalForm, setShowAnimalForm] = useState(false);
@@ -1637,82 +1653,80 @@ export default function FarmApp() {
 
   useEffect(()=>{
     (async()=>{
-      let loadedUsers=[];
-      await Promise.all([
-        loadKey(STORAGE_KEYS.animals,      setAnimals),
-        loadKey(STORAGE_KEYS.vaccinations, setVaccinations),
-        loadKey(STORAGE_KEYS.growth,       setGrowthRecords),
-        loadKey(STORAGE_KEYS.health,       setHealthEvents),
-        loadKey(STORAGE_KEYS.feed,         setFeedItems),
-        loadKey(STORAGE_KEYS.sales,        setSales),
-        loadKey(STORAGE_KEYS.expenses,     setExpenses),
-        loadKey(STORAGE_KEYS.users, u=>{ loadedUsers=u; setUsers(u); }),
-      ]);
-      if (!loadedUsers?.length) {
-        const admin={id:uid(),name:"Farm Admin",email:"admin@farm.local",password:"admin123",role:"Admin",status:"Active",createdAtDate:todayStr()};
-        loadedUsers=[admin]; setUsers(loadedUsers);
-        await persist(STORAGE_KEYS.users, loadedUsers);
-      }
       try {
-        const s=await window.storage.get(STORAGE_KEYS.session,false);
-        if (s?.value) { const {userId}=JSON.parse(s.value); const m=loadedUsers.find(u=>u.id===userId&&u.status==="Active"); if(m) setCurrentUser(m); }
-      } catch(e){}
-      setLoading(false);
+        if (api.hasToken()) {
+          const user = await api.me();
+          setCurrentUser(user);
+          await applyBackendData(user);
+        }
+      } catch (err) {
+        api.clearTokens();
+        setApiError(err.message || "Please sign in again.");
+      } finally {
+        setLoading(false);
+      }
     })();
   },[]);
 
-  const handleLogin=user=>{ setCurrentUser(user); persist(STORAGE_KEYS.session,{userId:user.id}); };
-  const handleLogout=()=>{ setCurrentUser(null); setMobileNavOpen(false); deleteKey(STORAGE_KEYS.session); };
+  async function applyBackendData(user) {
+    const data = await api.loadAll(user);
+    setAnimals(data.animals); setVaccinations(data.vaccinations); setGrowthRecords(data.growthRecords);
+    setHealthEvents(data.healthEvents); setFeedItems(data.feedItems);
+    setSales(data.sales); setExpenses(data.expenses); setUsers(data.users);
+  }
 
-  // mutators — auto-log expense helpers
-  const _addExpense=(data)=>{ setExpenses(prev=>{ const next=[...prev,{id:uid(),createdAt:Date.now(),...data}]; persist(STORAGE_KEYS.expenses,next); return next; }); };
+  async function refreshBackendData() {
+    if (currentUser) await applyBackendData(currentUser);
+  }
 
-  const addAnimal=data=>{
-    const newId=uid();
-    const next=[...animals,{id:newId,createdAt:Date.now(),...data}];
-    setAnimals(next); persist(STORAGE_KEYS.animals,next);
-    if (data.origin==="Purchased" && data.purchaseCost>0)
-      _addExpense({category:"Animal purchase",description:`Purchased ${data.tagId}${data.name?" — "+data.name:""}`,date:data.dob||todayStr(),amount:data.purchaseCost,vendor:"",notes:"",autoLogged:true});
-    setShowAnimalForm(false);
+  async function runBackend(action) {
+    setApiError("");
+    try { return await action(); }
+    catch (err) { setApiError(err.message || "Backend request failed."); throw err; }
+  }
+
+  const handleLogin=async(email,password)=>{
+    const user = await api.login(email,password);
+    setCurrentUser(user);
+    await applyBackendData(user);
   };
-  const editAnimal=(id,data)=>{ const next=animals.map(a=>a.id===id?{...a,...data}:a); setAnimals(next); persist(STORAGE_KEYS.animals,next); setEditingAnimalId(null); };
-  const deleteAnimal=id=>{ const next=animals.filter(a=>a.id!==id); setAnimals(next); persist(STORAGE_KEYS.animals,next); if(openAnimalId===id) setOpenAnimalId(null); };
-  const addVaccination=data=>{ const next=[...vaccinations,{id:uid(),createdAt:Date.now(),...data}]; setVaccinations(next); persist(STORAGE_KEYS.vaccinations,next); setShowVaxForm(false); };
-  const deleteVaccination=id=>{ const next=vaccinations.filter(v=>v.id!==id); setVaccinations(next); persist(STORAGE_KEYS.vaccinations,next); };
-  const addGrowth=data=>{ const next=[...growthRecords,{id:uid(),createdAt:Date.now(),...data}]; setGrowthRecords(next); persist(STORAGE_KEYS.growth,next); const ani=animals.find(a=>a.id===data.animalId); if(ani){ const an=animals.map(a=>a.id===data.animalId?{...a,weightKg:data.weightKg}:a); setAnimals(an); persist(STORAGE_KEYS.animals,an); } setShowGrowthForm(false); };
-  const deleteGrowth=id=>{ const next=growthRecords.filter(g=>g.id!==id); setGrowthRecords(next); persist(STORAGE_KEYS.growth,next); };
-  const addHealthEvent=data=>{ const next=[...healthEvents,{id:uid(),createdAt:Date.now(),...data}]; setHealthEvents(next); persist(STORAGE_KEYS.health,next); setShowHealthForm(false); };
-  const deleteHealthEvent=id=>{ const next=healthEvents.filter(h=>h.id!==id); setHealthEvents(next); persist(STORAGE_KEYS.health,next); };
-  const addFeed=data=>{
-    const next=[...feedItems,{id:uid(),createdAt:Date.now(),...data}];
-    setFeedItems(next); persist(STORAGE_KEYS.feed,next);
-    if (data.quantityKg>0 && data.costPerKg>0)
-      _addExpense({category:"Feed purchase",description:`Initial stock — ${data.feedType}`,date:data.lastRestocked||todayStr(),amount:Math.round(data.quantityKg*data.costPerKg*100)/100,vendor:data.supplier||"",notes:"",autoLogged:true});
-    setShowFeedForm(false);
-  };
-  const adjustFeed=(id,delta)=>{ const next=feedItems.map(f=>f.id===id?{...f,quantityKg:Math.max(0,Math.round((f.quantityKg+delta)*10)/10),lastRestocked:delta>0?todayStr():f.lastRestocked}:f); setFeedItems(next); persist(STORAGE_KEYS.feed,next); };
-  const deleteFeed=id=>{ const next=feedItems.filter(f=>f.id!==id); setFeedItems(next); persist(STORAGE_KEYS.feed,next); };
-  const addSale=data=>{ const next=[...sales,{id:uid(),createdAt:Date.now(),...data}]; setSales(next); persist(STORAGE_KEYS.sales,next); setShowSaleForm(false); };
-  const deleteSale=id=>{ const next=sales.filter(x=>x.id!==id); setSales(next); persist(STORAGE_KEYS.sales,next); };
-  const addExpense=data=>{ const next=[...expenses,{id:uid(),createdAt:Date.now(),...data,autoLogged:false}]; setExpenses(next); persist(STORAGE_KEYS.expenses,next); setShowExpenseForm(false); };
-  const deleteExpense=id=>{ const next=expenses.filter(x=>x.id!==id); setExpenses(next); persist(STORAGE_KEYS.expenses,next); };
-  const addUser=data=>{ const next=[...users,{id:uid(),name:data.name,email:data.email,password:data.password,role:data.role,status:"Active",createdAtDate:todayStr()}]; setUsers(next); persist(STORAGE_KEYS.users,next); setShowAddUser(false); };
-  const editUser=(id,update)=>{ const next=users.map(u=>u.id===id?{...u,...update}:u); setUsers(next); persist(STORAGE_KEYS.users,next); if(currentUser?.id===id) setCurrentUser(c=>({...c,...update})); setEditingUserId(null); };
-  const toggleUser=id=>{ const next=users.map(u=>u.id===id?{...u,status:u.status==="Active"?"Disabled":"Active"}:u); setUsers(next); persist(STORAGE_KEYS.users,next); };
-  const deleteUser=id=>{ const next=users.filter(u=>u.id!==id); setUsers(next); persist(STORAGE_KEYS.users,next); };
+  const handleLogout=()=>{ api.clearTokens(); setCurrentUser(null); setMobileNavOpen(false); setActiveTab("dashboard"); };
 
-  const seedData=async()=>{
+  const addAnimal=data=>runBackend(async()=>{ await api.createAnimal(data); await refreshBackendData(); setShowAnimalForm(false); });
+  const editAnimal=(id,data)=>runBackend(async()=>{ await api.updateAnimal(id,data); await refreshBackendData(); setEditingAnimalId(null); });
+  const deleteAnimal=id=>runBackend(async()=>{ await api.deleteAnimal(id); await refreshBackendData(); if(openAnimalId===id) setOpenAnimalId(null); });
+  const addVaccination=data=>runBackend(async()=>{ await api.createVaccination(data); await refreshBackendData(); setShowVaxForm(false); });
+  const deleteVaccination=id=>runBackend(async()=>{ await api.deleteVaccination(id); await refreshBackendData(); });
+  const addGrowth=data=>runBackend(async()=>{ await api.createGrowthRecord(data); await refreshBackendData(); setShowGrowthForm(false); });
+  const deleteGrowth=id=>runBackend(async()=>{ await api.deleteGrowthRecord(id); await refreshBackendData(); });
+  const addHealthEvent=data=>runBackend(async()=>{ await api.createHealthEvent(data); await refreshBackendData(); setShowHealthForm(false); });
+  const deleteHealthEvent=id=>runBackend(async()=>{ await api.deleteHealthEvent(id); await refreshBackendData(); });
+  const addFeed=data=>runBackend(async()=>{ await api.createFeedItem(data); await refreshBackendData(); setShowFeedForm(false); });
+  const adjustFeed=(id,delta)=>runBackend(async()=>{ await api.adjustFeedItem(id, delta > 0 ? "restock" : "use", Math.abs(delta)); await refreshBackendData(); });
+  const deleteFeed=id=>runBackend(async()=>{ await api.deleteFeedItem(id); await refreshBackendData(); });
+  const addSale=data=>runBackend(async()=>{ await api.createSale(data); await refreshBackendData(); setShowSaleForm(false); });
+  const deleteSale=id=>runBackend(async()=>{ await api.deleteSale(id); await refreshBackendData(); });
+  const addExpense=data=>runBackend(async()=>{ await api.createExpense(data); await refreshBackendData(); setShowExpenseForm(false); });
+  const deleteExpense=id=>runBackend(async()=>{ await api.deleteExpense(id); await refreshBackendData(); });
+  const addUser=data=>runBackend(async()=>{ await api.createUser(data); await refreshBackendData(); setShowAddUser(false); });
+  const editUser=(id,update)=>runBackend(async()=>{ await api.updateUser(id,update); await refreshBackendData(); setEditingUserId(null); });
+  const toggleUser=id=>runBackend(async()=>{ await api.toggleUser(id); await refreshBackendData(); });
+  const deleteUser=id=>runBackend(async()=>{ await api.deleteUser(id); await refreshBackendData(); });
+  const seedData=async()=>runBackend(async()=>{
     const s=buildSampleData();
-    setAnimals(s.animals); setVaccinations(s.vaccinations); setGrowthRecords(s.growth);
-    setHealthEvents(s.health); setFeedItems(s.feed);
-    setSales(s.sales); setExpenses(s.expenses);
-    await Promise.all([
-      persist(STORAGE_KEYS.animals,s.animals), persist(STORAGE_KEYS.vaccinations,s.vaccinations),
-      persist(STORAGE_KEYS.growth,s.growth),   persist(STORAGE_KEYS.health,s.health),
-      persist(STORAGE_KEYS.feed,s.feed),        persist(STORAGE_KEYS.sales,s.sales),
-      persist(STORAGE_KEYS.expenses,s.expenses),
-    ]);
-  };
+    const animalMap = {};
+    for (const animal of s.animals) {
+      const created = await api.createAnimal({ ...animal, id: undefined });
+      animalMap[animal.id] = created.id;
+    }
+    for (const vaccination of s.vaccinations) await api.createVaccination({ ...vaccination, id: undefined, animalId: animalMap[vaccination.animalId] });
+    for (const growth of s.growth) await api.createGrowthRecord({ ...growth, id: undefined, animalId: animalMap[growth.animalId] });
+    for (const health of s.health) await api.createHealthEvent({ ...health, id: undefined, animalId: animalMap[health.animalId] });
+    for (const feed of s.feed) await api.createFeedItem({ ...feed, id: undefined });
+    for (const sale of s.sales) await api.createSale({ ...sale, id: undefined, animalId: sale.animalId ? animalMap[sale.animalId] : null });
+    for (const expense of s.expenses.filter(x=>!x.autoLogged)) await api.createExpense({ ...expense, id: undefined });
+    await refreshBackendData();
+  });
 
   const openAnimal      = animals.find(a=>a.id===openAnimalId);
   const editingAnimal   = animals.find(a=>a.id===editingAnimalId);
@@ -1730,7 +1744,7 @@ export default function FarmApp() {
       {loading ? (
         <div className="loading-screen"><Sprout size={22}/><span>Opening the ledger…</span></div>
       ) : !currentUser ? (
-        <LoginPage users={users} onLogin={handleLogin}/>
+        <LoginPage onLogin={handleLogin}/>
       ) : (
         <div className="app-shell">
           {mobileNavOpen && <div className="sidebar-backdrop" onClick={()=>setMobileNavOpen(false)}/>}
@@ -1769,6 +1783,7 @@ export default function FarmApp() {
               </div>
             </header>
             <div className="content">
+              {apiError && <div className="form-error" style={{marginBottom:16}}>{apiError}</div>}
               {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} onSeed={seedData} onNavigate={setActiveTab}/>}
               {activeTab==="animals"      && <AnimalsPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
               {activeTab==="vaccinations" && <VaccinationsPage animals={animals} vaccinations={vaccinations} onAdd={()=>{setDefaultAnimal(null);setShowVaxForm(true);}} onDelete={deleteVaccination}/>}
