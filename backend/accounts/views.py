@@ -1,11 +1,13 @@
 from django.contrib.auth import get_user_model
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .permissions import IsActiveFarmUser, IsAdminRole
-from .serializers import CurrentUserSerializer, EmailTokenObtainPairSerializer, UserSerializer
+from .serializers import CurrentUserSerializer, EmailTokenObtainPairSerializer, FarmRegistrationSerializer, UserSerializer
 
 User = get_user_model()
 
@@ -19,6 +21,23 @@ class EmailTokenObtainPairView(TokenObtainPairView):
 @permission_classes([IsActiveFarmUser])
 def me(request):
     return Response(CurrentUserSerializer(request.user).data)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def register_farm(request):
+    serializer = FarmRegistrationSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    user = serializer.save()
+    refresh = RefreshToken.for_user(user)
+    return Response(
+        {
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": CurrentUserSerializer(user).data,
+        },
+        status=status.HTTP_201_CREATED,
+    )
 
 
 class UserViewSet(viewsets.ModelViewSet):

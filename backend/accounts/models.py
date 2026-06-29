@@ -12,7 +12,15 @@ class User(AbstractUser):
         ACTIVE = "Active", "Active"
         DISABLED = "Disabled", "Disabled"
 
+    class Gender(models.TextChoices):
+        FEMALE = "Female", "Female"
+        MALE = "Male", "Male"
+        OTHER = "Other", "Other"
+        PREFER_NOT_TO_SAY = "Prefer not to say", "Prefer not to say"
+
     email = models.EmailField(unique=True)
+    gender = models.CharField(max_length=30, choices=Gender.choices, blank=True)
+    phone_number = models.CharField(max_length=30, blank=True)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.WORKER)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
     farm = models.ForeignKey(

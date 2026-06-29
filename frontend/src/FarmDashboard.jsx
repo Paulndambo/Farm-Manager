@@ -5,7 +5,7 @@ import {
   Package, ChevronRight, Sprout, Users, UserPlus, LogOut, Ban,
   Pencil, Lock, AlertTriangle, Activity, Heart, FileText,
   ChevronDown, ChevronUp, Filter,
-  Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign,
+  Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign, Settings,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -19,6 +19,7 @@ const SEX_OPTIONS  = ["Female","Male"];
 const STATUS_OPTIONS = ["Healthy","Sick","Pregnant","Quarantine","Sold","Deceased"];
 const ORIGIN_OPTIONS = ["Born in herd","Purchased"];
 const ROLE_OPTIONS = ["Admin","Manager","Worker"];
+const GENDER_OPTIONS = ["", "Female", "Male", "Other", "Prefer not to say"];
 const HEALTH_EVENT_TYPES = ["Observation","Treatment","Injury","Illness","Recovery","Other"];
 const SALE_TYPES     = ["Animal sale","Milk / dairy","Eggs","Wool / hide","Other produce","Other"];
 const EXPENSE_CATS   = ["Animal purchase","Feed purchase","Veterinary","Medication","Labor","Equipment","Transport","Utilities","Other"];
@@ -36,6 +37,7 @@ const PAGE_TITLES = {
   sales:        "Sales & Revenue",
   expenses:     "Expenses",
   users:        "User Management",
+  profile:      "Profile",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -421,14 +423,19 @@ function AdjustStockForm({ item, mode, onSubmit, onClose }) {
 
 // ─── User management forms ────────────────────────────────────────────────────
 function AddUserForm({ existingUsers, onSubmit, onClose }) {
-  const [form, setForm] = useState({ name:"", email:"", password:"", role:"Worker" });
+  const [form, setForm] = useState({ first_name:"", last_name:"", email:"", gender:"", phoneNumber:"", password:"", role:"Worker" });
   const [error, setError] = useState("");
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
   return (
-    <form onSubmit={e=>{e.preventDefault();setError("");if(!form.name.trim()||!form.email.trim()||!form.password.trim())return;if(findUserByEmail(existingUsers,form.email)){setError("A user with that email already exists.");return;}onSubmit(form);}}>
+    <form onSubmit={e=>{e.preventDefault();setError("");if(!form.first_name.trim()||!form.last_name.trim()||!form.email.trim()||!form.password.trim())return;if(findUserByEmail(existingUsers,form.email)){setError("A user with that email already exists.");return;}onSubmit(form);}}>
       <div className="form-grid">
-        <label className="span-2">Full name *<input value={form.name} onChange={set("name")} placeholder="e.g. Asha Kimani" required/></label>
+        <label>First name *<input value={form.first_name} onChange={set("first_name")} placeholder="e.g. Asha" required/></label>
+        <label>Last name *<input value={form.last_name} onChange={set("last_name")} placeholder="e.g. Kimani" required/></label>
         <label className="span-2">Email *<input type="email" value={form.email} onChange={set("email")} placeholder="e.g. asha@farm.local" required/></label>
+        <label>Gender
+          <select value={form.gender} onChange={set("gender")}>{GENDER_OPTIONS.map(g=><option key={g} value={g}>{g || "Not specified"}</option>)}</select>
+        </label>
+        <label>Phone number<input value={form.phoneNumber} onChange={set("phoneNumber")} placeholder="e.g. +254 700 000 000"/></label>
         <label>Role
           <select value={form.role} onChange={set("role")}>{ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}</select>
         </label>
@@ -445,14 +452,17 @@ function AddUserForm({ existingUsers, onSubmit, onClose }) {
 }
 
 function EditUserForm({ user, existingUsers, onSubmit, onClose }) {
-  const [form, setForm] = useState({ name:user.name, email:user.email, role:user.role, password:"" });
+  const [form, setForm] = useState({ first_name:user.first_name||"", last_name:user.last_name||"", email:user.email, gender:user.gender||"", phoneNumber:user.phoneNumber||"", role:user.role, password:"" });
   const [error, setError] = useState("");
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
   return (
-    <form onSubmit={e=>{e.preventDefault();setError("");const clash=findUserByEmail(existingUsers,form.email);if(clash&&clash.id!==user.id){setError("Another user already uses that email.");return;}const update={name:form.name,email:form.email,role:form.role};if(form.password.trim())update.password=form.password.trim();onSubmit(update);}}>
+    <form onSubmit={e=>{e.preventDefault();setError("");if(!form.first_name.trim()||!form.last_name.trim()||!form.email.trim())return;const clash=findUserByEmail(existingUsers,form.email);if(clash&&clash.id!==user.id){setError("Another user already uses that email.");return;}const update={first_name:form.first_name,last_name:form.last_name,email:form.email,gender:form.gender,phoneNumber:form.phoneNumber,role:form.role};if(form.password.trim())update.password=form.password.trim();onSubmit(update);}}>
       <div className="form-grid">
-        <label className="span-2">Full name *<input value={form.name} onChange={set("name")} required/></label>
+        <label>First name *<input value={form.first_name} onChange={set("first_name")} required/></label>
+        <label>Last name *<input value={form.last_name} onChange={set("last_name")} required/></label>
         <label className="span-2">Email *<input type="email" value={form.email} onChange={set("email")} required/></label>
+        <label>Gender<select value={form.gender} onChange={set("gender")}>{GENDER_OPTIONS.map(g=><option key={g} value={g}>{g || "Not specified"}</option>)}</select></label>
+        <label>Phone number<input value={form.phoneNumber} onChange={set("phoneNumber")} placeholder="e.g. +254 700 000 000"/></label>
         <label>Role<select value={form.role} onChange={set("role")}>{ROLE_OPTIONS.map(r=><option key={r}>{r}</option>)}</select></label>
         <label>Reset password<input type="text" value={form.password} onChange={set("password")} placeholder="Leave blank to keep current"/></label>
       </div>
@@ -1119,7 +1129,7 @@ function UsersPage({ users, currentUser, onAdd, onEdit, onToggleStatus, onDelete
       <div className="toolbar"><div className="spacer"/><button className="btn btn--primary" onClick={onAdd}><UserPlus size={15}/>Add user</button></div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Status</th><th>Added</th><th/></tr></thead>
+          <thead><tr><th>User</th><th>Email</th><th>Gender</th><th>Phone</th><th>Role</th><th>Status</th><th>Added</th><th/></tr></thead>
           <tbody>
             {users.map(u=>{
               const isSelf=u.id===currentUser.id;
@@ -1127,6 +1137,8 @@ function UsersPage({ users, currentUser, onAdd, onEdit, onToggleStatus, onDelete
                 <tr key={u.id}>
                   <td><div className="user-cell"><span className="avatar">{initials(u.name)}</span>{u.name}{isSelf&&<span className="muted small"> (you)</span>}</div></td>
                   <td className="mono">{u.email}</td>
+                  <td>{u.gender || <span className="muted">Not specified</span>}</td>
+                  <td className="mono">{u.phoneNumber || "—"}</td>
                   <td><Badge tone={u.role==="Admin"?"success":"neutral"}>{u.role}</Badge></td>
                   <td><Badge tone={u.status==="Active"?"success":"danger"}>{u.status}</Badge></td>
                   <td className="mono">{formatDate(u.createdAtDate)}</td>
@@ -1148,45 +1160,133 @@ function UsersPage({ users, currentUser, onAdd, onEdit, onToggleStatus, onDelete
   );
 }
 
-function LoginPage({ onLogin }) {
-  const [email, setEmail]       = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError]       = useState("");
-  const [submitting, setSubmitting] = useState(false);
+function ProfilePage({ currentUser, farm, onSaveFarm }) {
+  const canEdit = currentUser.role === "Admin";
+  const [form, setForm] = useState({
+    name: farm?.name || "",
+    location: farm?.location || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(()=>{
+    setForm({ name: farm?.name || "", location: farm?.location || "" });
+  }, [farm?.name, farm?.location]);
+
   async function handleSubmit(e) {
-    e.preventDefault(); setError("");
-    setSubmitting(true);
+    e.preventDefault();
+    if (!canEdit) return;
+    setSaving(true); setMessage(""); setError("");
     try {
-      await onLogin(email, password);
+      await onSaveFarm(form);
+      setMessage("Farm details updated.");
     } catch (err) {
-      setError(err.message || "Incorrect email or password.");
+      setError(err.message || "Could not update farm details.");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
+
   return (
-    <div className="login-screen">
-      <div className="login-card">
-        <div className="login-brand">
-          <span className="sidebar__brand-mark"><Sprout size={20}/></span>
-          <div><div className="sidebar__brand-name" style={{color:"var(--ink)"}}>Pasture Ledger</div><div className="muted small">Sign in to the farm dashboard</div></div>
+    <div className="page profile-page">
+      <div className="profile-grid">
+        <div className="panel">
+          <div className="panel__head"><h3><Settings size={16}/>Farm details</h3></div>
+          <form onSubmit={handleSubmit}>
+            <div className="form-grid" style={{gridTemplateColumns:"1fr"}}>
+              <label>Farm name<input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} disabled={!canEdit} required/></label>
+              <label>Location<input value={form.location} onChange={e=>setForm(f=>({...f,location:e.target.value}))} disabled={!canEdit} placeholder="Town, county, or region"/></label>
+            </div>
+            {error && <p className="form-error">{error}</p>}
+            {message && <p className="form-success">{message}</p>}
+            <div className="profile-actions">
+              <button type="submit" className="btn btn--primary" disabled={!canEdit || saving}><Pencil size={15}/>{saving ? "Saving..." : "Save farm details"}</button>
+            </div>
+          </form>
+          {!canEdit && <p className="muted small profile-note">Only farm admins can edit farm details.</p>}
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="form-grid" style={{gridTemplateColumns:"1fr"}}>
-            <label>Email<input type="email" autoFocus value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@farm.local" required/></label>
-            <label>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" required/></label>
+        <div className="panel">
+          <div className="panel__head"><h3><Users size={16}/>Your access</h3></div>
+          <div className="profile-summary">
+            <div><span className="muted small">Name</span><strong>{currentUser.name}</strong></div>
+            <div><span className="muted small">Email</span><strong className="mono">{currentUser.email}</strong></div>
+            <div><span className="muted small">Role</span><strong>{currentUser.role}</strong></div>
+            <div><span className="muted small">Farm</span><strong>{farm?.name || currentUser.farm?.name || "Farm workspace"}</strong></div>
           </div>
-          {error&&<p className="form-error">{error}</p>}
-          <button type="submit" className="btn btn--primary" style={{width:"100%",justifyContent:"center",marginTop:14}} disabled={submitting}><Lock size={15}/>{submitting?"Signing in...":"Sign in"}</button>
-        </form>
-        <p className="muted small login-hint">Default account: <span className="mono">admin@farm.local</span> / <span className="mono">admin123</span></p>
-        <p className="muted small login-hint">Accounts are created by your admin — there is no self-registration.</p>
+        </div>
       </div>
     </div>
   );
 }
 
-// ─── Finance forms ────────────────────────────────────────────────────────────
+function LoginPage({ onLogin, onRegister }) {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail]       = useState("");
+  const [password, setPassword] = useState("");
+  const [farmName, setFarmName] = useState("");
+  const [farmLocation, setFarmLocation] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [error, setError]       = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const isRegistering = mode === "register";
+
+  async function handleSubmit(e) {
+    e.preventDefault(); setError("");
+    setSubmitting(true);
+    try {
+      if (isRegistering) {
+        await onRegister({ farmName, farmLocation, firstName, lastName, email, password });
+      } else {
+        await onLogin(email, password);
+      }
+    } catch (err) {
+      setError(err.message || "Request failed. Please check your details and try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function switchMode(nextMode) {
+    setMode(nextMode);
+    setError("");
+  }
+
+  return (
+    <div className="login-screen">
+      <div className="login-card login-card--wide">
+        <div className="login-brand">
+          <span className="sidebar__brand-mark"><Sprout size={20}/></span>
+          <div><div className="sidebar__brand-name" style={{color:"var(--ink)"}}>Pasture Ledger</div><div className="muted small">{isRegistering ? "Create your farm workspace" : "Sign in to the farm dashboard"}</div></div>
+        </div>
+        <div className="auth-switch" role="tablist" aria-label="Authentication mode">
+          <button type="button" className={mode==="login"?"active":""} onClick={()=>switchMode("login")}>Sign in</button>
+          <button type="button" className={mode==="register"?"active":""} onClick={()=>switchMode("register")}>Create farm</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-grid" style={{gridTemplateColumns:isRegistering?"1fr 1fr":"1fr"}}>
+            {isRegistering && <>
+              <label>Farm name *<input value={farmName} onChange={e=>setFarmName(e.target.value)} placeholder="e.g. Green Valley Farm" required/></label>
+              <label>Farm location<input value={farmLocation} onChange={e=>setFarmLocation(e.target.value)} placeholder="e.g. Nakuru"/></label>
+              <label>First name *<input value={firstName} onChange={e=>setFirstName(e.target.value)} placeholder="e.g. Asha" required/></label>
+              <label>Last name<input value={lastName} onChange={e=>setLastName(e.target.value)} placeholder="e.g. Mwangi"/></label>
+            </>}
+            <label className={isRegistering?"span-2":""}>Email<input type="email" autoFocus value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@farm.local" required/></label>
+            <label className={isRegistering?"span-2":""}>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 6 characters" minLength={6} required/></label>
+          </div>
+          {error&&<p className="form-error">{error}</p>}
+          <button type="submit" className="btn btn--primary" style={{width:"100%",justifyContent:"center",marginTop:14}} disabled={submitting}>
+            <Lock size={15}/>{submitting ? (isRegistering ? "Creating farm..." : "Signing in...") : (isRegistering ? "Create farm workspace" : "Sign in")}
+          </button>
+        </form>
+        {!isRegistering && <p className="muted small login-hint">Default account: <span className="mono">admin@farm.local</span> / <span className="mono">admin123</span></p>}
+        <p className="muted small login-hint">Each account belongs to one farm. Farm admins add managers and workers from User Management.</p>
+      </div>
+    </div>
+  );
+}
+
 function SaleForm({ animals, onSubmit, onClose }) {
   const [form, setForm] = useState({
     type: SALE_TYPES[0], animalId:"", description:"",
@@ -1617,6 +1717,7 @@ const NAV_SECTIONS = [
     {key:"expenses",  label:"Expenses",      icon:Receipt},
   ]},
   { label:"Administration", items:[
+    {key:"profile", label:"Profile", icon:Settings},
     {key:"users", label:"Users", icon:Users, adminOnly:true},
   ]},
 ];
@@ -1635,6 +1736,7 @@ export default function FarmApp() {
   const [expenses, setExpenses]         = useState([]);
   const [users, setUsers]               = useState([]);
   const [currentUser, setCurrentUser]   = useState(null);
+  const [farm, setFarm]                 = useState(null);
   const [apiError, setApiError]         = useState("");
 
   // modals
@@ -1670,6 +1772,8 @@ export default function FarmApp() {
 
   async function applyBackendData(user) {
     const data = await api.loadAll(user);
+    setFarm(data.farm);
+    setCurrentUser(current => current ? { ...current, farm: data.farm } : current);
     setAnimals(data.animals); setVaccinations(data.vaccinations); setGrowthRecords(data.growthRecords);
     setHealthEvents(data.healthEvents); setFeedItems(data.feedItems);
     setSales(data.sales); setExpenses(data.expenses); setUsers(data.users);
@@ -1686,11 +1790,22 @@ export default function FarmApp() {
   }
 
   const handleLogin=async(email,password)=>{
+    setApiError("");
     const user = await api.login(email,password);
     setCurrentUser(user);
     await applyBackendData(user);
+    setApiError("");
   };
-  const handleLogout=()=>{ api.clearTokens(); setCurrentUser(null); setMobileNavOpen(false); setActiveTab("dashboard"); };
+
+  const handleRegister=async(data)=>{
+    setApiError("");
+    const user = await api.registerFarm(data);
+    setCurrentUser(user);
+    await applyBackendData(user);
+    setApiError("");
+  };
+
+  const handleLogout=()=>{ api.clearTokens(); setCurrentUser(null); setFarm(null); setMobileNavOpen(false); setActiveTab("dashboard"); };
 
   const addAnimal=data=>runBackend(async()=>{ await api.createAnimal(data); await refreshBackendData(); setShowAnimalForm(false); });
   const editAnimal=(id,data)=>runBackend(async()=>{ await api.updateAnimal(id,data); await refreshBackendData(); setEditingAnimalId(null); });
@@ -1712,6 +1827,11 @@ export default function FarmApp() {
   const editUser=(id,update)=>runBackend(async()=>{ await api.updateUser(id,update); await refreshBackendData(); setEditingUserId(null); });
   const toggleUser=id=>runBackend(async()=>{ await api.toggleUser(id); await refreshBackendData(); });
   const deleteUser=id=>runBackend(async()=>{ await api.deleteUser(id); await refreshBackendData(); });
+  const saveFarm=data=>runBackend(async()=>{
+    const updated = await api.updateFarm(data);
+    setFarm(updated);
+    setCurrentUser(user => user ? { ...user, farm: updated } : user);
+  });
   const seedData=async()=>runBackend(async()=>{
     const s=buildSampleData();
     const animalMap = {};
@@ -1744,7 +1864,7 @@ export default function FarmApp() {
       {loading ? (
         <div className="loading-screen"><Sprout size={22}/><span>Opening the ledger…</span></div>
       ) : !currentUser ? (
-        <LoginPage onLogin={handleLogin}/>
+        <LoginPage onLogin={handleLogin} onRegister={handleRegister}/>
       ) : (
         <div className="app-shell">
           {mobileNavOpen && <div className="sidebar-backdrop" onClick={()=>setMobileNavOpen(false)}/>}
@@ -1778,7 +1898,7 @@ export default function FarmApp() {
               </div>
               <div className="topbar__user">
                 <span className="avatar">{initials(currentUser.name)}</span>
-                <div className="topbar__user-info"><strong>{currentUser.name}</strong><span className="muted small">{currentUser.role}</span></div>
+                <div className="topbar__user-info"><strong>{currentUser.name}</strong><span className="muted small">{currentUser.role} - {farm?.name || currentUser.farm?.name || "Farm workspace"}</span></div>
                 <button className="icon-btn" onClick={handleLogout} title="Log out" aria-label="Log out"><LogOut size={17}/></button>
               </div>
             </header>
@@ -1792,6 +1912,7 @@ export default function FarmApp() {
               {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} onNavigate={setActiveTab}/>}
               {activeTab==="sales"        && <SalesPage animals={animals} sales={sales} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
               {activeTab==="expenses"     && <ExpensesPage expenses={expenses} onAdd={()=>setShowExpenseForm(true)} onDelete={deleteExpense}/>}
+              {activeTab==="profile"      && <ProfilePage currentUser={currentUser} farm={farm || currentUser.farm} onSaveFarm={saveFarm}/>}
               {activeTab==="users" && currentUser.role==="Admin" && <UsersPage users={users} currentUser={currentUser} onAdd={()=>setShowAddUser(true)} onEdit={setEditingUserId} onToggleStatus={toggleUser} onDelete={deleteUser}/>}
             </div>
           </main>
@@ -1934,7 +2055,7 @@ tr.clickable:hover { background:#F3EDDD; }
 .btn--sm      { font-size:12px;padding:6px 10px; }
 .btn--tiny    { font-size:11.5px;padding:5px 9px;border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:6px; }
 .btn--tiny:hover { background:#F1EBDB; }
-.btn--tiny:disabled,.icon-btn:disabled { opacity:.4;cursor:not-allowed; }
+.btn:disabled,.icon-btn:disabled { opacity:.45;cursor:not-allowed; }
 .icon-btn { background:none;border:none;cursor:pointer;color:var(--muted);padding:5px;border-radius:6px;display:inline-flex; }
 .icon-btn:hover { background:#F1EBDB; }
 .icon-btn--danger:hover { color:var(--rust);background:#F4DCD6; }
@@ -1963,12 +2084,26 @@ tr.clickable:hover { background:#F3EDDD; }
 .form-grid textarea { resize:vertical; }
 .form-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:18px; }
 .form-error { background:#F4DCD6;color:var(--rust);font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:7px;margin-top:10px; }
+.form-success { background:#E4ECE2;color:var(--green-soft);font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:7px;margin-top:10px; }
+
+/* Profile */
+.profile-grid { display:grid;grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr);gap:14px;align-items:start; }
+.profile-actions { display:flex;justify-content:flex-end;margin-top:16px; }
+.profile-note { margin:12px 0 0; }
+.profile-summary { display:grid;gap:12px; }
+.profile-summary div { display:flex;flex-direction:column;gap:3px;padding-bottom:10px;border-bottom:1px solid var(--line); }
+.profile-summary div:last-child { border-bottom:none;padding-bottom:0; }
+.profile-summary strong { font-size:13.5px; }
 
 /* Login */
 .login-screen { min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--green);padding:24px; }
 .login-card { background:var(--paper);border-radius:16px;padding:30px 28px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.3); }
+.login-card--wide { max-width:520px; }
 .login-brand { display:flex;align-items:center;gap:10px;margin-bottom:22px; }
 .login-hint  { margin-top:14px;line-height:1.5; }
+.auth-switch { display:grid;grid-template-columns:1fr 1fr;gap:4px;background:#EFE6D1;border:1px solid var(--line);border-radius:10px;padding:4px;margin-bottom:16px; }
+.auth-switch button { border:0;border-radius:7px;background:transparent;color:var(--muted);font-weight:800;font-size:13px;padding:8px 10px;cursor:pointer; }
+.auth-switch button.active { background:var(--paper);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08); }
 
 /* Drawer */
 .drawer-overlay { position:fixed;inset:0;background:rgba(42,36,25,.45);display:flex;justify-content:flex-end;z-index:60; }
@@ -2036,6 +2171,7 @@ tr.clickable:hover { background:#F3EDDD; }
   .content { padding:16px 16px 40px; }
   .stat-row { grid-template-columns:1fr 1fr; }
   .dash-grid { grid-template-columns:1fr; }
+  .profile-grid { grid-template-columns:1fr; }
   .panel--wide { grid-column:span 1; }
   .fin-stats { grid-template-columns:1fr 1fr; }
   .fin-dash-strip { flex-wrap:wrap; gap:12px; }

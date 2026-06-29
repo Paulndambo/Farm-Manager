@@ -52,6 +52,8 @@ function normalizeUser(user) {
   return {
     ...user,
     name: user.name || `${user.first_name || ""} ${user.last_name || ""}`.trim() || user.email,
+    phoneNumber: user.phoneNumber || "",
+    gender: user.gender || "",
     createdAtDate: user.date_joined?.slice(0, 10),
   };
 }
@@ -92,14 +94,6 @@ function normalizeExpense(expense) {
   };
 }
 
-function splitName(name) {
-  const parts = (name || "").trim().split(/\s+/).filter(Boolean);
-  return {
-    first_name: parts.shift() || "",
-    last_name: parts.join(" "),
-  };
-}
-
 function nullIfBlank(value) {
   return value === "" ? null : value;
 }
@@ -120,12 +114,22 @@ export const api = {
     return normalizeUser(data.user);
   },
 
+  async registerFarm(data) {
+    const response = await request("/auth/register-farm/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+    setTokens(response);
+    return normalizeUser(response.user);
+  },
+
   async me() {
     return normalizeUser(await request("/auth/me/"));
   },
 
   async loadAll(currentUser) {
-    const [animals, vaccinations, growth, health, feed, sales, expenses, users] = await Promise.all([
+    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, users] = await Promise.all([
+      request("/farm/"),
       request("/animals/"),
       request("/vaccinations/"),
       request("/growth-records/"),
@@ -139,6 +143,7 @@ export const api = {
     const normalizedUsers = users.map(normalizeUser);
 
     return {
+      farm,
       animals: animals.map(normalizeAnimal),
       vaccinations,
       growthRecords: growth.map(record => ({ ...record, weightKg: toNumber(record.weightKg) || 0 })),
@@ -148,6 +153,17 @@ export const api = {
       expenses: expenses.map(normalizeExpense),
       users: normalizedUsers,
     };
+  },
+
+  getFarm() {
+    return request("/farm/");
+  },
+
+  updateFarm(data) {
+    return request("/farm/", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
 
   createAnimal(data) {
@@ -234,12 +250,28 @@ export const api = {
   createUser(data) {
     return request("/users/", {
       method: "POST",
-      body: JSON.stringify({ ...splitName(data.name), email: data.email, password: data.password, role: data.role, status: "Active" }),
+      body: JSON.stringify({
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email,
+        gender: data.gender,
+        phoneNumber: data.phoneNumber,
+        password: data.password,
+        role: data.role,
+        status: "Active",
+      }),
     }).then(normalizeUser);
   },
 
   updateUser(id, data) {
-    const payload = { ...splitName(data.name), email: data.email, role: data.role };
+    const payload = {
+      first_name: data.first_name,
+      last_name: data.last_name,
+      email: data.email,
+      gender: data.gender,
+      phoneNumber: data.phoneNumber,
+      role: data.role,
+    };
     if (data.password) payload.password = data.password;
     return request(`/users/${id}/`, {
       method: "PATCH",

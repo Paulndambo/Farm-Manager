@@ -103,6 +103,7 @@ All API routes are prefixed with `/api/`.
 
 ```text
 POST   /api/auth/login/
+POST   /api/auth/register-farm/
 POST   /api/auth/refresh/
 GET    /api/auth/me/
 

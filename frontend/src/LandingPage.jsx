@@ -88,7 +88,7 @@ const includedFeatures = [
   ["gold", BarChart3, "Profit and loss dashboard", "Monthly revenue vs expenses chart, profit margin tracking, and breakdowns by revenue type and expense category."],
   ["green", Users, "Team management", "Add farm managers and workers with role-based access. Admins control who can see and do what."],
   ["rust", Smartphone, "Works on any device", "Fully mobile-responsive. Use it in the field on your phone or at the desk on a laptop."],
-  ["gold", Lock, "No self-registration", "Only admins can add users. Your farm data stays within your team."],
+  ["gold", Lock, "Farm-scoped access", "Owners create a farm workspace, then admins add users who only see that farm's data."],
   ["green", Cloud, "Data persists automatically", "Everything saves as you go. Your records are there every time you come back."],
 ];
 
