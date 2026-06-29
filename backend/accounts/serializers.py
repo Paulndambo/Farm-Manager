@@ -68,6 +68,8 @@ class FarmRegistrationSerializer(serializers.Serializer):
     firstName = serializers.CharField(max_length=150)
     lastName = serializers.CharField(max_length=150, required=False, allow_blank=True)
     email = serializers.EmailField()
+    gender = serializers.ChoiceField(choices=User.Gender.choices, required=False, allow_blank=True)
+    phoneNumber = serializers.CharField(max_length=30, required=False, allow_blank=True)
     password = serializers.CharField(write_only=True, min_length=6)
 
     def validate_email(self, value):
@@ -87,6 +89,8 @@ class FarmRegistrationSerializer(serializers.Serializer):
             email=validated_data["email"],
             first_name=validated_data["firstName"],
             last_name=validated_data.get("lastName", ""),
+            gender=validated_data.get("gender", ""),
+            phone_number=validated_data.get("phoneNumber", ""),
             role=User.Role.ADMIN,
             status=User.Status.ACTIVE,
             is_active=True,

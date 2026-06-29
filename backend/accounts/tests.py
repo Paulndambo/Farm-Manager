@@ -22,6 +22,8 @@ class FarmScopingTests(TestCase):
                 "firstName": "Asha",
                 "lastName": "Mwangi",
                 "email": "asha@example.com",
+                "gender": User.Gender.FEMALE,
+                "phoneNumber": "+254711111111",
                 "password": "secret123",
             },
             format="json",
@@ -30,8 +32,11 @@ class FarmScopingTests(TestCase):
         self.assertEqual(response.status_code, 201)
         user = User.objects.get(email="asha@example.com")
         self.assertEqual(user.role, User.Role.ADMIN)
+        self.assertEqual(user.gender, User.Gender.FEMALE)
+        self.assertEqual(user.phone_number, "+254711111111")
         self.assertEqual(user.farm.name, "North Ridge Farm")
         self.assertEqual(response.data["user"]["farm"]["name"], "North Ridge Farm")
+        self.assertEqual(response.data["user"]["phoneNumber"], "+254711111111")
         self.assertIn("access", response.data)
 
     def test_created_users_inherit_current_admin_farm(self):

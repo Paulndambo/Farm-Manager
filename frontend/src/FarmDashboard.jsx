@@ -1211,6 +1211,8 @@ function ProfilePage({ currentUser, farm, onSaveFarm }) {
           <div className="profile-summary">
             <div><span className="muted small">Name</span><strong>{currentUser.name}</strong></div>
             <div><span className="muted small">Email</span><strong className="mono">{currentUser.email}</strong></div>
+            <div><span className="muted small">Gender</span><strong>{currentUser.gender || "Not specified"}</strong></div>
+            <div><span className="muted small">Phone</span><strong className="mono">{currentUser.phoneNumber || "Not provided"}</strong></div>
             <div><span className="muted small">Role</span><strong>{currentUser.role}</strong></div>
             <div><span className="muted small">Farm</span><strong>{farm?.name || currentUser.farm?.name || "Farm workspace"}</strong></div>
           </div>
@@ -1228,6 +1230,8 @@ function LoginPage({ onLogin, onRegister }) {
   const [farmLocation, setFarmLocation] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [gender, setGender] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [error, setError]       = useState("");
   const [submitting, setSubmitting] = useState(false);
   const isRegistering = mode === "register";
@@ -1237,7 +1241,7 @@ function LoginPage({ onLogin, onRegister }) {
     setSubmitting(true);
     try {
       if (isRegistering) {
-        await onRegister({ farmName, farmLocation, firstName, lastName, email, password });
+        await onRegister({ farmName, farmLocation, firstName, lastName, gender, phoneNumber, email, password });
       } else {
         await onLogin(email, password);
       }
@@ -1271,6 +1275,8 @@ function LoginPage({ onLogin, onRegister }) {
               <label>Farm location<input value={farmLocation} onChange={e=>setFarmLocation(e.target.value)} placeholder="e.g. Nakuru"/></label>
               <label>First name *<input value={firstName} onChange={e=>setFirstName(e.target.value)} placeholder="e.g. Asha" required/></label>
               <label>Last name<input value={lastName} onChange={e=>setLastName(e.target.value)} placeholder="e.g. Mwangi"/></label>
+              <label>Gender<select value={gender} onChange={e=>setGender(e.target.value)}>{GENDER_OPTIONS.map(g=><option key={g} value={g}>{g || "Not specified"}</option>)}</select></label>
+              <label>Phone number<input value={phoneNumber} onChange={e=>setPhoneNumber(e.target.value)} placeholder="e.g. +254 700 000 000"/></label>
             </>}
             <label className={isRegistering?"span-2":""}>Email<input type="email" autoFocus value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@farm.local" required/></label>
             <label className={isRegistering?"span-2":""}>Password<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="At least 6 characters" minLength={6} required/></label>
