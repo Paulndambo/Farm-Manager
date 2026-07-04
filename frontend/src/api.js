@@ -94,6 +94,27 @@ function normalizeExpense(expense) {
   };
 }
 
+function normalizeContract(contract) {
+  return {
+    ...contract,
+    agreedRate: toNumber(contract.agreedRate),
+  };
+}
+
+function normalizeInvoice(invoice) {
+  return {
+    ...invoice,
+    amount: toNumber(invoice.amount) || 0,
+    amountPaid: toNumber(invoice.amountPaid) || 0,
+    items: (invoice.items || []).map(item => ({
+      ...item,
+      quantity: toNumber(item.quantity) || 0,
+      unitPrice: toNumber(item.unitPrice) || 0,
+      lineTotal: toNumber(item.lineTotal) || 0,
+    })),
+  };
+}
+
 function nullIfBlank(value) {
   return value === "" ? null : value;
 }
@@ -128,7 +149,7 @@ export const api = {
   },
 
   async loadAll(currentUser) {
-    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, users] = await Promise.all([
+    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, partners, contracts, invoices, users] = await Promise.all([
       request("/farm/"),
       request("/animals/"),
       request("/vaccinations/"),
@@ -137,6 +158,9 @@ export const api = {
       request("/feed-items/"),
       request("/sales/"),
       request("/expenses/"),
+      request("/partners/"),
+      request("/contracts/"),
+      request("/invoices/"),
       currentUser?.role === "Admin" ? request("/users/") : Promise.resolve([]),
     ]);
 
@@ -151,6 +175,9 @@ export const api = {
       feedItems: feed.map(normalizeFeed),
       sales: sales.map(normalizeSale),
       expenses: expenses.map(normalizeExpense),
+      partners,
+      contracts: contracts.map(normalizeContract),
+      invoices: invoices.map(normalizeInvoice),
       users: normalizedUsers,
     };
   },
@@ -245,6 +272,52 @@ export const api = {
 
   deleteExpense(id) {
     return request(`/expenses/${id}/`, { method: "DELETE" });
+  },
+
+  createPartner(data) {
+    return request("/partners/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deletePartner(id) {
+    return request(`/partners/${id}/`, { method: "DELETE" });
+  },
+
+  createContract(data) {
+    return request("/contracts/", {
+      method: "POST",
+      body: JSON.stringify({
+        ...data,
+        endDate: nullIfBlank(data.endDate),
+        agreedRate: data.agreedRate === "" ? null : data.agreedRate,
+      }),
+    }).then(normalizeContract);
+  },
+
+  deleteContract(id) {
+    return request(`/contracts/${id}/`, { method: "DELETE" });
+  },
+
+  createInvoice(data) {
+    return request("/invoices/", {
+      method: "POST",
+      body: JSON.stringify({
+        ...data,
+        contractId: data.contractId || null,
+        dueDate: nullIfBlank(data.dueDate),
+        items: data.items.map(item => ({
+          ...item,
+          quantity: item.quantity || 0,
+          unitPrice: item.unitPrice || 0,
+        })),
+      }),
+    }).then(normalizeInvoice);
+  },
+
+  deleteInvoice(id) {
+    return request(`/invoices/${id}/`, { method: "DELETE" });
   },
 
   createUser(data) {

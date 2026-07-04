@@ -13,8 +13,14 @@ from accounts.permissions import IsActiveFarmUser
 from inventory.models import FeedItem
 from livestock.models import Animal, HealthEvent, Vaccination
 
-from .models import Expense, Sale
-from .serializers import ExpenseSerializer, SaleSerializer
+from .models import Expense, FarmContract, Invoice, Sale, TradingPartner
+from .serializers import (
+    ExpenseSerializer,
+    FarmContractSerializer,
+    InvoiceSerializer,
+    SaleSerializer,
+    TradingPartnerSerializer,
+)
 
 
 def money(value):
@@ -38,6 +44,39 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return Expense.objects.filter(farm=self.request.user.farm).select_related("animal", "feed_item")
+
+    def perform_create(self, serializer):
+        serializer.save(farm=self.request.user.farm)
+
+
+class TradingPartnerViewSet(viewsets.ModelViewSet):
+    serializer_class = TradingPartnerSerializer
+    permission_classes = [IsActiveFarmUser]
+
+    def get_queryset(self):
+        return TradingPartner.objects.filter(farm=self.request.user.farm)
+
+    def perform_create(self, serializer):
+        serializer.save(farm=self.request.user.farm)
+
+
+class FarmContractViewSet(viewsets.ModelViewSet):
+    serializer_class = FarmContractSerializer
+    permission_classes = [IsActiveFarmUser]
+
+    def get_queryset(self):
+        return FarmContract.objects.filter(farm=self.request.user.farm).select_related("partner")
+
+    def perform_create(self, serializer):
+        serializer.save(farm=self.request.user.farm)
+
+
+class InvoiceViewSet(viewsets.ModelViewSet):
+    serializer_class = InvoiceSerializer
+    permission_classes = [IsActiveFarmUser]
+
+    def get_queryset(self):
+        return Invoice.objects.filter(farm=self.request.user.farm).select_related("partner", "contract")
 
     def perform_create(self, serializer):
         serializer.save(farm=self.request.user.farm)

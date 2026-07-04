@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard, PawPrint, Syringe, TrendingUp, Wheat,
   Plus, X, Menu, Search, Trash2, CheckCircle2, ArrowUp, ArrowDown,
   Package, ChevronRight, Sprout, Users, UserPlus, LogOut, Ban,
-  Pencil, Lock, AlertTriangle, Activity, Heart, FileText,
-  ChevronDown, ChevronUp, Filter,
+  Pencil, Lock, Activity, Heart, FileText,
   Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign, Settings,
 } from "lucide-react";
 import {
@@ -23,6 +22,12 @@ const GENDER_OPTIONS = ["", "Female", "Male", "Other", "Prefer not to say"];
 const HEALTH_EVENT_TYPES = ["Observation","Treatment","Injury","Illness","Recovery","Other"];
 const SALE_TYPES     = ["Animal sale","Milk / dairy","Eggs","Wool / hide","Other produce","Other"];
 const EXPENSE_CATS   = ["Animal purchase","Feed purchase","Veterinary","Medication","Labor","Equipment","Transport","Utilities","Other"];
+const PARTNER_TYPES  = ["Supplier","Customer","Both"];
+const CONTRACT_DIRECTIONS = ["Supply to farm","Farm output"];
+const CONTRACT_STATUSES = ["Draft","Active","Paused","Ended"];
+const BILLING_CYCLES = ["On delivery","Weekly","Monthly","Seasonal","Other"];
+const INVOICE_DIRECTIONS = ["Payable","Receivable"];
+const INVOICE_STATUSES = ["Draft","Issued","Part paid","Paid","Overdue","Cancelled"];
 const PIE_COLORS     = ["#A23B2E","#D9A441","#3F5D45","#8A7B62","#6C4F3D","#C97B53","#5B7A8C"];
 const BAR_REVENUE    = "#3F5D45";
 const BAR_EXPENSE    = "#A23B2E";
@@ -34,6 +39,7 @@ const PAGE_TITLES = {
   growth:       "Growth Tracking",
   feed:         "Feed Inventory",
   finances:     "Finances",
+  contracts:    "Contracts & Invoices",
   sales:        "Sales & Revenue",
   expenses:     "Expenses",
   users:        "User Management",
@@ -41,8 +47,6 @@ const PAGE_TITLES = {
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
-
 function formatDate(d) {
   if (!d) return "—";
   const date = new Date(d + "T00:00:00");
@@ -117,6 +121,13 @@ function statusTone(s) {
   if (s === "Sick" || s === "Deceased") return "danger";
   if (s === "Pregnant")  return "warning";
   if (s === "Quarantine") return "warning";
+  return "neutral";
+}
+
+function invoiceTone(status) {
+  if (status === "Paid") return "success";
+  if (status === "Overdue" || status === "Cancelled") return "danger";
+  if (status === "Part paid" || status === "Issued") return "warning";
   return "neutral";
 }
 
@@ -668,7 +679,7 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
 }
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
-function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, feedItems, sales, expenses, onSeed, onNavigate }) {
+function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, feedItems, sales, expenses, onNavigate }) {
   const total     = animals.length;
   const healthy   = animals.filter(a=>a.status==="Healthy").length;
   const sick      = animals.filter(a=>a.status==="Sick").length;
@@ -722,8 +733,8 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
 
   if (isEmpty) return (
     <EmptyState icon={Sprout} title="The ledger is empty"
-      body="Start by adding your livestock, or load a sample farm to explore the dashboard."
-      actionLabel="Load sample data" onAction={onSeed}/>
+      body="Start by adding livestock records from your farm. The overview will fill in as backend data is saved."
+      actionLabel="Add livestock" onAction={()=>onNavigate("animals")}/>
   );
 
   return (
@@ -893,7 +904,7 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
   );
 }
 
-function AnimalsPage({ animals, vaccinations, growthRecords, healthEvents, onAdd, onDelete, onOpen }) {
+function AnimalsPage({ animals, healthEvents, onAdd, onDelete, onOpen }) {
   const [query, setQuery]     = useState("");
   const [speciesF, setSpeciesF] = useState("All");
   const [statusF, setStatusF]   = useState("All");
@@ -1020,11 +1031,11 @@ function VaccinationsPage({ animals, vaccinations, onAdd, onDelete }) {
 function GrowthPage({ animals, growthRecords, onAdd, onDelete }) {
   const [selectedId, setSelectedId] = useState(animals[0]?.id||"");
   const [confirmId, setConfirmId]   = useState(null);
-  useEffect(()=>{ if(!selectedId&&animals[0]) setSelectedId(animals[0].id); },[animals,selectedId]);
+  const selectedAnimalId = animals.some(a=>a.id===selectedId) ? selectedId : (animals[0]?.id||"");
 
-  const records = growthRecords.filter(g=>g.animalId===selectedId).sort((a,b)=>a.date<b.date?-1:1);
+  const records = growthRecords.filter(g=>g.animalId===selectedAnimalId).sort((a,b)=>a.date<b.date?-1:1);
   const chartData = records.map(g=>({label:formatDate(g.date),weight:g.weightKg}));
-  const animal    = animals.find(a=>a.id===selectedId);
+  const animal    = animals.find(a=>a.id===selectedAnimalId);
 
   let withGain=[]; let prev=null;
   [...records].reverse().forEach(g=>{ withGain.push({...g,gain:prev!==null?Math.round((g.weightKg-prev)*10)/10:null}); prev=g.weightKg; });
@@ -1032,7 +1043,7 @@ function GrowthPage({ animals, growthRecords, onAdd, onDelete }) {
   return (
     <div className="page">
       <div className="toolbar">
-        <select value={selectedId} onChange={e=>setSelectedId(e.target.value)} disabled={!animals.length}>
+        <select value={selectedAnimalId} onChange={e=>setSelectedId(e.target.value)} disabled={!animals.length}>
           {!animals.length&&<option>No animals yet</option>}
           {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""}</option>)}
         </select>
@@ -1162,24 +1173,27 @@ function UsersPage({ users, currentUser, onAdd, onEdit, onToggleStatus, onDelete
 
 function ProfilePage({ currentUser, farm, onSaveFarm }) {
   const canEdit = currentUser.role === "Admin";
-  const [form, setForm] = useState({
+  const farmFormKey = `${farm?.name || ""}|${farm?.location || ""}`;
+  const [formState, setForm] = useState({
     name: farm?.name || "",
     location: farm?.location || "",
+    farmFormKey,
   });
+  const form = formState.farmFormKey === farmFormKey ? formState : {
+    name: farm?.name || "",
+    location: farm?.location || "",
+    farmFormKey,
+  };
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
-  useEffect(()=>{
-    setForm({ name: farm?.name || "", location: farm?.location || "" });
-  }, [farm?.name, farm?.location]);
 
   async function handleSubmit(e) {
     e.preventDefault();
     if (!canEdit) return;
     setSaving(true); setMessage(""); setError("");
     try {
-      await onSaveFarm(form);
+      await onSaveFarm({ name: form.name, location: form.location });
       setMessage("Farm details updated.");
     } catch (err) {
       setError(err.message || "Could not update farm details.");
@@ -1375,6 +1389,136 @@ function ExpenseForm({ onSubmit, onClose }) {
 }
 
 // ─── Finance pages ────────────────────────────────────────────────────────────
+function PartnerForm({ onSubmit, onClose }) {
+  const [form, setForm] = useState({ name:"", partnerType:"Supplier", contactPerson:"", phone:"", email:"", address:"", notes:"" });
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  return (
+    <form onSubmit={e=>{e.preventDefault();if(!form.name.trim())return;onSubmit({...form,isActive:true});}}>
+      <div className="form-grid">
+        <label className="span-2">Partner name *<input value={form.name} onChange={set("name")} placeholder="e.g. Highland Millers or Githunguri Dairy" required/></label>
+        <label>Relationship<select value={form.partnerType} onChange={set("partnerType")}>{PARTNER_TYPES.map(t=><option key={t}>{t}</option>)}</select></label>
+        <label>Contact person<input value={form.contactPerson} onChange={set("contactPerson")} placeholder="e.g. Accounts office"/></label>
+        <label>Phone<input value={form.phone} onChange={set("phone")} placeholder="+254 ..."/></label>
+        <label>Email<input type="email" value={form.email} onChange={set("email")} placeholder="billing@example.com"/></label>
+        <label className="span-2">Address<input value={form.address} onChange={set("address")} placeholder="Town, route, or postal address"/></label>
+        <label className="span-2">Notes<textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="Payment terms, delivery preferences, contact notes..."/></label>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary"><Plus size={15}/>Add partner</button>
+      </div>
+    </form>
+  );
+}
+
+function ContractForm({ partners, onSubmit, onClose }) {
+  const [form, setForm] = useState({
+    partnerId: partners[0]?.id || "", direction:"Supply to farm", title:"", goodsOrServices:"",
+    startDate:todayStr(), endDate:"", billingCycle:"Monthly", agreedRate:"", terms:"", status:"Active",
+  });
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+
+  if (!partners.length) return (
+    <div><p className="confirm-body">Add a supplier or customer before creating a contract.</p>
+      <div className="form-actions"><button className="btn btn--ghost" onClick={onClose}>Close</button></div></div>
+  );
+
+  return (
+    <form onSubmit={e=>{e.preventDefault();if(!form.partnerId||!form.title.trim()||!form.goodsOrServices.trim())return;onSubmit(form);}}>
+      <div className="form-grid">
+        <label className="span-2">Partner *<select value={form.partnerId} onChange={set("partnerId")}>{partners.map(p=><option key={p.id} value={p.id}>{p.name} ({p.partnerType})</option>)}</select></label>
+        <label>Contract direction<select value={form.direction} onChange={set("direction")}>{CONTRACT_DIRECTIONS.map(d=><option key={d}>{d}</option>)}</select></label>
+        <label>Status<select value={form.status} onChange={set("status")}>{CONTRACT_STATUSES.map(s=><option key={s}>{s}</option>)}</select></label>
+        <label className="span-2">Contract title *<input value={form.title} onChange={set("title")} placeholder="e.g. Weekly milk delivery agreement" required/></label>
+        <label className="span-2">Goods or services *<input value={form.goodsOrServices} onChange={set("goodsOrServices")} placeholder="Feed, vaccines, milk, eggs, meat..." required/></label>
+        <label>Start date<input type="date" value={form.startDate} onChange={set("startDate")} required/></label>
+        <label>End date<input type="date" value={form.endDate} onChange={set("endDate")}/></label>
+        <label>Billing cycle<select value={form.billingCycle} onChange={set("billingCycle")}>{BILLING_CYCLES.map(c=><option key={c}>{c}</option>)}</select></label>
+        <label>Agreed rate<input type="number" min="0" step="0.01" value={form.agreedRate} onChange={set("agreedRate")} placeholder="optional"/></label>
+        <label className="span-2">Terms<textarea rows={3} value={form.terms} onChange={set("terms")} placeholder="Delivery schedule, quality requirements, payment window..."/></label>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary"><FileText size={15}/>Save contract</button>
+      </div>
+    </form>
+  );
+}
+
+function InvoiceForm({ partners, contracts, onSubmit, onClose }) {
+  const [form, setForm] = useState({
+    partnerId: partners[0]?.id || "", contractId:"", direction:"Payable", invoiceNumber:"",
+    issueDate:todayStr(), dueDate:"", description:"", amountPaid:"0", status:"Issued", notes:"",
+    items:[{ description:"", quantity:"1", unit:"", unitPrice:"" }],
+  });
+  const partnerContracts = contracts.filter(c=>String(c.partnerId)===String(form.partnerId));
+  const invoiceTotal = form.items.reduce((sum,item)=>sum+(parseFloat(item.quantity)||0)*(parseFloat(item.unitPrice)||0),0);
+  const set = k => e => setForm(f=>{
+    const next = {...f,[k]:e.target.value};
+    if (k === "partnerId") next.contractId = "";
+    return next;
+  });
+  const setItem = (idx,key,value) => setForm(f=>({...f,items:f.items.map((item,i)=>i===idx?{...item,[key]:value}:item)}));
+  const addItem = () => setForm(f=>({...f,items:[...f.items,{ description:"", quantity:"1", unit:"", unitPrice:"" }]}));
+  const removeItem = idx => setForm(f=>({...f,items:f.items.filter((_,i)=>i!==idx)}));
+
+  if (!partners.length) return (
+    <div><p className="confirm-body">Add a supplier or customer before recording an invoice.</p>
+      <div className="form-actions"><button className="btn btn--ghost" onClick={onClose}>Close</button></div></div>
+  );
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    const items = form.items
+      .map(item=>({
+        description:item.description.trim(),
+        quantity:parseFloat(item.quantity)||0,
+        unit:item.unit,
+        unitPrice:parseFloat(item.unitPrice)||0,
+      }))
+      .filter(item=>item.description && item.quantity>0 && item.unitPrice>=0);
+    if(!form.partnerId||!form.invoiceNumber.trim()||!form.description.trim()||items.length===0)return;
+    onSubmit({...form,amountPaid:parseFloat(form.amountPaid)||0,items});
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="form-grid">
+        <label>Invoice type<select value={form.direction} onChange={set("direction")}>{INVOICE_DIRECTIONS.map(d=><option key={d}>{d}</option>)}</select></label>
+        <label>Status<select value={form.status} onChange={set("status")}>{INVOICE_STATUSES.map(s=><option key={s}>{s}</option>)}</select></label>
+        <label className="span-2">Partner *<select value={form.partnerId} onChange={set("partnerId")}>{partners.map(p=><option key={p.id} value={p.id}>{p.name} ({p.partnerType})</option>)}</select></label>
+        <label className="span-2">Contract<select value={form.contractId} onChange={set("contractId")}><option value="">No contract link</option>{partnerContracts.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</select></label>
+        <label>Invoice number *<input value={form.invoiceNumber} onChange={set("invoiceNumber")} placeholder="e.g. INV-2026-001" required/></label>
+        <label>Issue date<input type="date" value={form.issueDate} onChange={set("issueDate")} required/></label>
+        <label>Due date<input type="date" value={form.dueDate} onChange={set("dueDate")}/></label>
+        <label>Amount paid<input type="number" min="0" step="0.01" value={form.amountPaid} onChange={set("amountPaid")}/></label>
+        <label className="span-2">Description *<input value={form.description} onChange={set("description")} placeholder="e.g. Dairy meal delivery or July milk supply" required/></label>
+        <div className="span-2 invoice-items-editor">
+          <div className="invoice-items-editor__head"><strong>Invoice items</strong><button type="button" className="btn btn--tiny" onClick={addItem}><Plus size={12}/>Item</button></div>
+          {form.items.map((item,idx)=>{
+            const lineTotal = (parseFloat(item.quantity)||0)*(parseFloat(item.unitPrice)||0);
+            return (
+              <div className="invoice-item-row" key={idx}>
+                <input value={item.description} onChange={e=>setItem(idx,"description",e.target.value)} placeholder="Item description" required/>
+                <input type="number" min="0" step="any" value={item.quantity} onChange={e=>setItem(idx,"quantity",e.target.value)} placeholder="Qty" required/>
+                <input value={item.unit} onChange={e=>setItem(idx,"unit",e.target.value)} placeholder="Unit"/>
+                <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={e=>setItem(idx,"unitPrice",e.target.value)} placeholder="Unit price" required/>
+                <span className="mono">{currency(lineTotal)}</span>
+                <button type="button" className="icon-btn icon-btn--danger" disabled={form.items.length===1} onClick={()=>removeItem(idx)} aria-label="Remove item"><Trash2 size={14}/></button>
+              </div>
+            );
+          })}
+          <div className="invoice-total"><span>Total</span><strong className="mono">{currency(invoiceTotal)}</strong></div>
+        </div>
+        <label className="span-2">Notes<textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="Payment method, delivery notes, references..."/></label>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary"><Receipt size={15}/>Save invoice</button>
+      </div>
+    </form>
+  );
+}
 function FinancesPage({ sales, expenses, onNavigate }) {
   const totalRevenue    = sales.reduce((s,x)=>s+x.amount,0);
   const totalExpenses   = expenses.reduce((s,x)=>s+x.amount,0);
@@ -1541,7 +1685,90 @@ function FinancesPage({ sales, expenses, onNavigate }) {
   );
 }
 
-function SalesPage({ animals, sales, onAdd, onDelete }) {
+function ContractsPage({ partners, contracts, invoices, onAddPartner, onAddContract, onAddInvoice, onDeletePartner, onDeleteContract, onDeleteInvoice }) {
+  const [tab, setTab] = useState("invoices");
+  const [confirm, setConfirm] = useState(null);
+  const payable = invoices.filter(i=>i.direction==="Payable").reduce((s,i)=>s+Math.max(i.amount-i.amountPaid,0),0);
+  const receivable = invoices.filter(i=>i.direction==="Receivable").reduce((s,i)=>s+Math.max(i.amount-i.amountPaid,0),0);
+  const activeContracts = contracts.filter(c=>c.status==="Active").length;
+
+  function confirmDelete() {
+    if (confirm?.type === "partner") onDeletePartner(confirm.id);
+    if (confirm?.type === "contract") onDeleteContract(confirm.id);
+    if (confirm?.type === "invoice") onDeleteInvoice(confirm.id);
+    setConfirm(null);
+  }
+
+  return (
+    <div className="page">
+      <div className="stat-row fin-stats">
+        <StatCard icon={Users} label="Partners" value={partners.length} sub="suppliers and customers" tone="ink"/>
+        <StatCard icon={FileText} label="Active contracts" value={activeContracts} sub={`${contracts.length} total agreements`} tone="green"/>
+        <StatCard icon={Receipt} label="Bills to pay" value={currencyShort(payable)} sub="supplier invoices outstanding" tone="rust"/>
+        <StatCard icon={Banknote} label="To collect" value={currencyShort(receivable)} sub="customer invoices outstanding" tone="gold"/>
+      </div>
+
+      <div className="toolbar">
+        <div className="segmented-tabs">
+          {["invoices","contracts","partners"].map(t=><button key={t} className={tab===t?"is-active":""} onClick={()=>setTab(t)}>{t[0].toUpperCase()+t.slice(1)}</button>)}
+        </div>
+        <div className="spacer"/>
+        <button className="btn btn--ghost" onClick={onAddPartner}><UserPlus size={15}/>Partner</button>
+        <button className="btn btn--ghost" onClick={onAddContract}><FileText size={15}/>Contract</button>
+        <button className="btn btn--primary" onClick={onAddInvoice}><Receipt size={15}/>Invoice</button>
+      </div>
+
+      {tab==="partners" && (partners.length===0 ? (
+        <EmptyState icon={Users} title="No partners yet" body="Add suppliers, veterinarians, milk buyers, butcheries, or egg customers before creating contracts and invoices." actionLabel="Add partner" onAction={onAddPartner}/>
+      ) : (
+        <div className="table-wrap"><table>
+          <thead><tr><th>Name</th><th>Type</th><th>Contact</th><th>Phone</th><th>Email</th><th>Notes</th><th/></tr></thead>
+          <tbody>{partners.map(p=>(
+            <tr key={p.id}>
+              <td><strong>{p.name}</strong></td><td><Badge tone={p.partnerType==="Supplier"?"warning":p.partnerType==="Customer"?"success":"neutral"}>{p.partnerType}</Badge></td>
+              <td>{p.contactPerson||"-"}</td><td className="mono">{p.phone||"-"}</td><td className="mono">{p.email||"-"}</td><td className="muted">{p.notes||"-"}</td>
+              <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"partner",id:p.id})} aria-label="Delete partner"><Trash2 size={15}/></button></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      ))}
+
+      {tab==="contracts" && (contracts.length===0 ? (
+        <EmptyState icon={FileText} title="No contracts yet" body="Create agreements for suppliers who bill the farm and customers who buy farm outputs." actionLabel="Add contract" onAction={onAddContract}/>
+      ) : (
+        <div className="table-wrap"><table>
+          <thead><tr><th>Contract</th><th>Partner</th><th>Direction</th><th>Goods / services</th><th>Cycle</th><th>Rate</th><th>Status</th><th>Dates</th><th/></tr></thead>
+          <tbody>{contracts.map(c=>(
+            <tr key={c.id}>
+              <td><strong>{c.title}</strong></td><td>{c.partnerName}</td><td><Badge tone={c.direction==="Farm output"?"success":"warning"}>{c.direction}</Badge></td>
+              <td>{c.goodsOrServices}</td><td>{c.billingCycle}</td><td className="mono">{c.agreedRate?currency(c.agreedRate):"-"}</td><td><Badge tone={c.status==="Active"?"success":"neutral"}>{c.status}</Badge></td>
+              <td className="mono">{formatDate(c.startDate)}{c.endDate?` - ${formatDate(c.endDate)}`:""}</td>
+              <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"contract",id:c.id})} aria-label="Delete contract"><Trash2 size={15}/></button></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      ))}
+
+      {tab==="invoices" && (invoices.length===0 ? (
+        <EmptyState icon={Receipt} title="No invoices yet" body="Record supplier invoices the farm must pay, or customer invoices the farm has issued for outputs." actionLabel="Add invoice" onAction={onAddInvoice}/>
+      ) : (
+        <div className="table-wrap"><table>
+          <thead><tr><th>Invoice</th><th>Type</th><th>Partner</th><th>Contract</th><th>Issued</th><th>Due</th><th>Amount</th><th>Paid</th><th>Status</th><th/></tr></thead>
+          <tbody>{invoices.map(i=>(
+            <tr key={i.id}>
+              <td><strong>{i.invoiceNumber}</strong><div className="muted small">{i.description}</div><div className="muted small">{i.items?.length||0} item{i.items?.length===1?"":"s"}</div></td><td><Badge tone={i.direction==="Receivable"?"success":"danger"}>{i.direction}</Badge></td>
+              <td>{i.partnerName}</td><td>{i.contractTitle||"-"}</td><td className="mono">{formatDate(i.issueDate)}</td><td className="mono">{formatDate(i.dueDate)}</td>
+              <td className="mono">{currency(i.amount)}</td><td className="mono">{currency(i.amountPaid)}</td><td><Badge tone={invoiceTone(i.status)}>{i.status}</Badge></td>
+              <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"invoice",id:i.id})} aria-label="Delete invoice"><Trash2 size={15}/></button></td>
+            </tr>
+          ))}</tbody>
+        </table></div>
+      ))}
+      {confirm&&<ConfirmDialog title="Delete record" body="This permanently removes the selected record." onCancel={()=>setConfirm(null)} onConfirm={confirmDelete}/>} 
+    </div>
+  );
+}
+function SalesPage({ sales, onAdd, onDelete }) {
   const [query, setQuery]       = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [confirmId, setConfirmId] = useState(null);
@@ -1647,68 +1874,6 @@ function ExpensesPage({ expenses, onAdd, onDelete }) {
   );
 }
 
-// ─── Sample data ──────────────────────────────────────────────────────────────
-function buildSampleData() {
-  const a1={id:uid(),tagId:"CT-014",name:"Bramble",species:"Cattle",breed:"Jersey",sex:"Female",dob:"2022-03-10",status:"Healthy",weightKg:328,location:"North Paddock",origin:"Born in herd",purchaseCost:0,currentValue:58000,notes:"Top milk producer"};
-  const a2={id:uid(),tagId:"CT-015",name:"Rosie",species:"Cattle",breed:"Friesian",sex:"Female",dob:"2021-11-05",status:"Pregnant",weightKg:385,location:"North Paddock",origin:"Purchased",purchaseCost:42000,currentValue:54000,notes:"Due in ~6 weeks"};
-  const a3={id:uid(),tagId:"GT-002",name:"Pepper",species:"Goat",breed:"Boer",sex:"Female",dob:"2023-05-01",status:"Healthy",weightKg:38,location:"Goat Pen A",origin:"Purchased",purchaseCost:9500,currentValue:12800,notes:""};
-  const a4={id:uid(),tagId:"SH-021",name:"Clover",species:"Sheep",breed:"Dorper",sex:"Female",dob:"2023-01-18",status:"Healthy",weightKg:56,location:"South Field",origin:"Born in herd",purchaseCost:0,currentValue:10300,notes:""};
-  const a5={id:uid(),tagId:"PG-007",name:"Wilbur",species:"Pig",breed:"Landrace",sex:"Male",dob:"2024-03-22",status:"Sick",weightKg:71,location:"Sty 2",origin:"Purchased",purchaseCost:6000,currentValue:5200,notes:"Bought at Githunguri market"};
-  const animals=[a1,a2,a3,a4,a5];
-
-  const now=new Date();
-  const iso=n=>{ const d=new Date(now); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); };
-
-  const vaccinations=[
-    {id:uid(),animalId:a1.id,vaccine:"Foot-and-mouth booster",dateGiven:iso(-200),nextDue:iso(-3),administeredBy:"Dr. Wanjiru",batchNo:"FMD-2024-A",notes:"No reaction"},
-    {id:uid(),animalId:a2.id,vaccine:"Brucellosis (RB51)",dateGiven:iso(-30),nextDue:iso(60),administeredBy:"Dr. Wanjiru",batchNo:"",notes:"Pre-calving"},
-    {id:uid(),animalId:a3.id,vaccine:"CDT vaccine",dateGiven:iso(-45),nextDue:iso(10),administeredBy:"Dr. Otieno",batchNo:"CDT-B2",notes:""},
-    {id:uid(),animalId:a5.id,vaccine:"Swine fever vaccine",dateGiven:iso(-365),nextDue:iso(2),administeredBy:"Dr. Wanjiru",batchNo:"",notes:"Annual"},
-  ];
-
-  const growth=[
-    {id:uid(),animalId:a1.id,date:iso(-90),weightKg:302,bodyCondition:"3 — Ideal",notes:""},
-    {id:uid(),animalId:a1.id,date:iso(-45),weightKg:315,bodyCondition:"3 — Ideal",notes:""},
-    {id:uid(),animalId:a1.id,date:iso(-5),weightKg:328,bodyCondition:"3 — Ideal",notes:"Good condition"},
-    {id:uid(),animalId:a5.id,date:iso(-60),weightKg:56,bodyCondition:"2 — Thin",notes:""},
-    {id:uid(),animalId:a5.id,date:iso(-20),weightKg:65,bodyCondition:"3 — Ideal",notes:"Improving"},
-    {id:uid(),animalId:a5.id,date:iso(-5),weightKg:71,bodyCondition:"",notes:"Off feed past 2 days"},
-  ];
-
-  const health=[
-    {id:uid(),animalId:a5.id,type:"Illness",date:iso(-6),description:"Off feed, lethargic",treatment:"Oxytetracycline 10ml IM, electrolytes",vetName:"Dr. Wanjiru",followUpDate:iso(2),resolved:false},
-    {id:uid(),animalId:a1.id,type:"Injury",date:iso(-40),description:"Minor wire cut on left flank",treatment:"Iodine wash, fly spray",vetName:"",followUpDate:"",resolved:true},
-    {id:uid(),animalId:a3.id,type:"Observation",date:iso(-10),description:"Slight nasal discharge",treatment:"Monitored, cleared in 3 days",vetName:"",followUpDate:"",resolved:true},
-  ];
-
-  const feed=[
-    {id:uid(),feedType:"Dairy meal",quantityKg:120,reorderLevel:80,costPerKg:48,supplier:"Highland Millers",lastRestocked:iso(-10)},
-    {id:uid(),feedType:"Hay bales",quantityKg:35,reorderLevel:50,costPerKg:12,supplier:"Riverside Farm Supplies",lastRestocked:iso(-20)},
-    {id:uid(),feedType:"Pig grower pellets",quantityKg:200,reorderLevel:60,costPerKg:52,supplier:"Highland Millers",lastRestocked:iso(-3)},
-  ];
-
-  const sales=[
-    {id:uid(),type:"Animal sale",animalId:null,animalLabel:"",description:"Sold 3 weaner piglets",date:iso(-60),quantity:3,unitPrice:8000,amount:24000,buyer:"Mwangi Farm",notes:""},
-    {id:uid(),type:"Milk / dairy",animalId:a1.id,animalLabel:`CT-014 — Bramble`,description:"Milk sales — March",date:iso(-30),quantity:180,unitPrice:65,amount:11700,buyer:"Githunguri Dairy",notes:""},
-    {id:uid(),type:"Milk / dairy",animalId:a1.id,animalLabel:`CT-014 — Bramble`,description:"Milk sales — April",date:iso(-5),quantity:175,unitPrice:65,amount:11375,buyer:"Githunguri Dairy",notes:""},
-    {id:uid(),type:"Animal sale",animalId:null,animalLabel:"",description:"Sold 1 mature goat",date:iso(-14),quantity:1,unitPrice:12000,amount:12000,buyer:"Local market",notes:"Sold at Limuru market"},
-  ];
-
-  const expenses=[
-    {id:uid(),category:"Animal purchase",description:`Purchased CT-015 — Rosie`,date:iso(-180),amount:42000,vendor:"Muthiga Livestock",notes:"",autoLogged:true},
-    {id:uid(),category:"Animal purchase",description:`Purchased GT-002 — Pepper`,date:iso(-120),amount:9500,vendor:"Githunguri market",notes:"",autoLogged:true},
-    {id:uid(),category:"Animal purchase",description:`Purchased PG-007 — Wilbur`,date:iso(-90),amount:6000,vendor:"Githunguri market",notes:"",autoLogged:true},
-    {id:uid(),category:"Feed purchase",description:"Dairy meal restock — 120 kg",date:iso(-10),amount:120*48,vendor:"Highland Millers",notes:"",autoLogged:true},
-    {id:uid(),category:"Veterinary",description:"Routine herd health check",date:iso(-45),amount:3500,vendor:"Dr. Wanjiru",notes:""},
-    {id:uid(),category:"Veterinary",description:"Emergency call — Wilbur",date:iso(-6),amount:2800,vendor:"Dr. Wanjiru",notes:"Oxytetracycline + consult"},
-    {id:uid(),category:"Labor",description:"Casual labor — fencing repair",date:iso(-20),amount:4500,vendor:"",notes:"2 workers × 2 days"},
-    {id:uid(),category:"Feed purchase",description:"Hay bales purchase",date:iso(-20),amount:35*12,vendor:"Riverside Farm Supplies",notes:"",autoLogged:true},
-  ];
-
-  return { animals, vaccinations, growth, health, feed, sales, expenses };
-}
-
-// ─── Nav ──────────────────────────────────────────────────────────────────────
 const NAV_SECTIONS = [
   { items:[{key:"dashboard",label:"Overview",icon:LayoutDashboard}] },
   { label:"Livestock", items:[
@@ -1719,6 +1884,7 @@ const NAV_SECTIONS = [
   ]},
   { label:"Finance", items:[
     {key:"finances",  label:"Overview",      icon:BadgeDollarSign},
+    {key:"contracts", label:"Contracts & Invoices", icon:FileText},
     {key:"sales",     label:"Sales & Revenue", icon:Banknote},
     {key:"expenses",  label:"Expenses",      icon:Receipt},
   ]},
@@ -1740,6 +1906,9 @@ export default function FarmApp() {
   const [feedItems, setFeedItems]       = useState([]);
   const [sales, setSales]               = useState([]);
   const [expenses, setExpenses]         = useState([]);
+  const [partners, setPartners]         = useState([]);
+  const [contracts, setContracts]       = useState([]);
+  const [invoices, setInvoices]         = useState([]);
   const [users, setUsers]               = useState([]);
   const [currentUser, setCurrentUser]   = useState(null);
   const [farm, setFarm]                 = useState(null);
@@ -1754,6 +1923,9 @@ export default function FarmApp() {
   const [showFeedForm, setShowFeedForm]   = useState(false);
   const [showSaleForm, setShowSaleForm]   = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
+  const [showPartnerForm, setShowPartnerForm] = useState(false);
+  const [showContractForm, setShowContractForm] = useState(false);
+  const [showInvoiceForm, setShowInvoiceForm] = useState(false);
   const [showAddUser, setShowAddUser]     = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [defaultAnimal, setDefaultAnimal] = useState(null);
@@ -1782,7 +1954,8 @@ export default function FarmApp() {
     setCurrentUser(current => current ? { ...current, farm: data.farm } : current);
     setAnimals(data.animals); setVaccinations(data.vaccinations); setGrowthRecords(data.growthRecords);
     setHealthEvents(data.healthEvents); setFeedItems(data.feedItems);
-    setSales(data.sales); setExpenses(data.expenses); setUsers(data.users);
+    setSales(data.sales); setExpenses(data.expenses); setPartners(data.partners);
+    setContracts(data.contracts); setInvoices(data.invoices); setUsers(data.users);
   }
 
   async function refreshBackendData() {
@@ -1821,7 +1994,6 @@ export default function FarmApp() {
   const addGrowth=data=>runBackend(async()=>{ await api.createGrowthRecord(data); await refreshBackendData(); setShowGrowthForm(false); });
   const deleteGrowth=id=>runBackend(async()=>{ await api.deleteGrowthRecord(id); await refreshBackendData(); });
   const addHealthEvent=data=>runBackend(async()=>{ await api.createHealthEvent(data); await refreshBackendData(); setShowHealthForm(false); });
-  const deleteHealthEvent=id=>runBackend(async()=>{ await api.deleteHealthEvent(id); await refreshBackendData(); });
   const addFeed=data=>runBackend(async()=>{ await api.createFeedItem(data); await refreshBackendData(); setShowFeedForm(false); });
   const adjustFeed=(id,delta)=>runBackend(async()=>{ await api.adjustFeedItem(id, delta > 0 ? "restock" : "use", Math.abs(delta)); await refreshBackendData(); });
   const deleteFeed=id=>runBackend(async()=>{ await api.deleteFeedItem(id); await refreshBackendData(); });
@@ -1829,6 +2001,12 @@ export default function FarmApp() {
   const deleteSale=id=>runBackend(async()=>{ await api.deleteSale(id); await refreshBackendData(); });
   const addExpense=data=>runBackend(async()=>{ await api.createExpense(data); await refreshBackendData(); setShowExpenseForm(false); });
   const deleteExpense=id=>runBackend(async()=>{ await api.deleteExpense(id); await refreshBackendData(); });
+  const addPartner=data=>runBackend(async()=>{ await api.createPartner(data); await refreshBackendData(); setShowPartnerForm(false); });
+  const deletePartner=id=>runBackend(async()=>{ await api.deletePartner(id); await refreshBackendData(); });
+  const addContract=data=>runBackend(async()=>{ await api.createContract(data); await refreshBackendData(); setShowContractForm(false); });
+  const deleteContract=id=>runBackend(async()=>{ await api.deleteContract(id); await refreshBackendData(); });
+  const addInvoice=data=>runBackend(async()=>{ await api.createInvoice(data); await refreshBackendData(); setShowInvoiceForm(false); });
+  const deleteInvoice=id=>runBackend(async()=>{ await api.deleteInvoice(id); await refreshBackendData(); });
   const addUser=data=>runBackend(async()=>{ await api.createUser(data); await refreshBackendData(); setShowAddUser(false); });
   const editUser=(id,update)=>runBackend(async()=>{ await api.updateUser(id,update); await refreshBackendData(); setEditingUserId(null); });
   const toggleUser=id=>runBackend(async()=>{ await api.toggleUser(id); await refreshBackendData(); });
@@ -1837,21 +2015,6 @@ export default function FarmApp() {
     const updated = await api.updateFarm(data);
     setFarm(updated);
     setCurrentUser(user => user ? { ...user, farm: updated } : user);
-  });
-  const seedData=async()=>runBackend(async()=>{
-    const s=buildSampleData();
-    const animalMap = {};
-    for (const animal of s.animals) {
-      const created = await api.createAnimal({ ...animal, id: undefined });
-      animalMap[animal.id] = created.id;
-    }
-    for (const vaccination of s.vaccinations) await api.createVaccination({ ...vaccination, id: undefined, animalId: animalMap[vaccination.animalId] });
-    for (const growth of s.growth) await api.createGrowthRecord({ ...growth, id: undefined, animalId: animalMap[growth.animalId] });
-    for (const health of s.health) await api.createHealthEvent({ ...health, id: undefined, animalId: animalMap[health.animalId] });
-    for (const feed of s.feed) await api.createFeedItem({ ...feed, id: undefined });
-    for (const sale of s.sales) await api.createSale({ ...sale, id: undefined, animalId: sale.animalId ? animalMap[sale.animalId] : null });
-    for (const expense of s.expenses.filter(x=>!x.autoLogged)) await api.createExpense({ ...expense, id: undefined });
-    await refreshBackendData();
   });
 
   const openAnimal      = animals.find(a=>a.id===openAnimalId);
@@ -1910,13 +2073,14 @@ export default function FarmApp() {
             </header>
             <div className="content">
               {apiError && <div className="form-error" style={{marginBottom:16}}>{apiError}</div>}
-              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} onSeed={seedData} onNavigate={setActiveTab}/>}
-              {activeTab==="animals"      && <AnimalsPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
+              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} onNavigate={setActiveTab}/>}
+              {activeTab==="animals"      && <AnimalsPage animals={animals} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
               {activeTab==="vaccinations" && <VaccinationsPage animals={animals} vaccinations={vaccinations} onAdd={()=>{setDefaultAnimal(null);setShowVaxForm(true);}} onDelete={deleteVaccination}/>}
               {activeTab==="growth"       && <GrowthPage animals={animals} growthRecords={growthRecords} onAdd={()=>{setDefaultAnimal(null);setShowGrowthForm(true);}} onDelete={deleteGrowth}/>}
               {activeTab==="feed"         && <FeedPage feedItems={feedItems} onAdd={()=>setShowFeedForm(true)} onAdjust={adjustFeed} onDelete={deleteFeed}/>}
               {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} onNavigate={setActiveTab}/>}
-              {activeTab==="sales"        && <SalesPage animals={animals} sales={sales} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
+              {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
+              {activeTab==="sales"        && <SalesPage sales={sales} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
               {activeTab==="expenses"     && <ExpensesPage expenses={expenses} onAdd={()=>setShowExpenseForm(true)} onDelete={deleteExpense}/>}
               {activeTab==="profile"      && <ProfilePage currentUser={currentUser} farm={farm || currentUser.farm} onSaveFarm={saveFarm}/>}
               {activeTab==="users" && currentUser.role==="Admin" && <UsersPage users={users} currentUser={currentUser} onAdd={()=>setShowAddUser(true)} onEdit={setEditingUserId} onToggleStatus={toggleUser} onDelete={deleteUser}/>}
@@ -1934,6 +2098,9 @@ export default function FarmApp() {
       {showFeedForm      && <Modal title="Add feed item" onClose={()=>setShowFeedForm(false)}><FeedForm onSubmit={addFeed} onClose={()=>setShowFeedForm(false)}/></Modal>}
       {showSaleForm      && <Modal title="Record sale" onClose={()=>setShowSaleForm(false)}><SaleForm animals={animals} onSubmit={addSale} onClose={()=>setShowSaleForm(false)}/></Modal>}
       {showExpenseForm   && <Modal title="Add expense" onClose={()=>setShowExpenseForm(false)}><ExpenseForm onSubmit={addExpense} onClose={()=>setShowExpenseForm(false)}/></Modal>}
+      {showPartnerForm   && <Modal title="Add trading partner" onClose={()=>setShowPartnerForm(false)}><PartnerForm onSubmit={addPartner} onClose={()=>setShowPartnerForm(false)}/></Modal>}
+      {showContractForm  && <Modal title="Add contract" onClose={()=>setShowContractForm(false)} wide><ContractForm partners={partners} onSubmit={addContract} onClose={()=>setShowContractForm(false)}/></Modal>}
+      {showInvoiceForm   && <Modal title="Add invoice" onClose={()=>setShowInvoiceForm(false)} wide><InvoiceForm partners={partners} contracts={contracts} onSubmit={addInvoice} onClose={()=>setShowInvoiceForm(false)}/></Modal>}
       {showAddUser       && <Modal title="Add user" onClose={()=>setShowAddUser(false)}><AddUserForm existingUsers={users} onSubmit={addUser} onClose={()=>setShowAddUser(false)}/></Modal>}
       {editingUser       && <Modal title="Edit user" onClose={()=>setEditingUserId(null)}><EditUserForm user={editingUser} existingUsers={users} onSubmit={u=>editUser(editingUser.id,u)} onClose={()=>setEditingUserId(null)}/></Modal>}
       {openAnimal        && <AnimalDrawer animal={openAnimal} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} onClose={()=>setOpenAnimalId(null)} onRecordVax={openRecordVax} onLogGrowth={openLogGrowth} onLogHealth={openLogHealth} onEditAnimal={openEditAnimal}/>}
@@ -2038,6 +2205,15 @@ const CSS = `
 .search-box { display:flex;align-items:center;gap:7px;background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:7px 11px;flex:1;max-width:320px;color:var(--muted); }
 .search-box input { border:none;outline:none;background:transparent;font-size:13.5px;flex:1;color:var(--ink);font-family:'Inter',sans-serif; }
 .toolbar select { border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif; }
+.segmented-tabs { display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--paper); }
+.segmented-tabs button { border:0;border-right:1px solid var(--line);background:transparent;color:var(--muted);font:600 12px 'Inter',sans-serif;padding:8px 12px;cursor:pointer; }
+.segmented-tabs button:last-child { border-right:0; }
+.segmented-tabs button.is-active { background:var(--green);color:#fff; }
+.invoice-items-editor { border:1px solid var(--line);border-radius:8px;background:var(--paper);padding:10px; }
+.invoice-items-editor__head,.invoice-total { display:flex;align-items:center;justify-content:space-between;gap:10px; }
+.invoice-item-row { display:grid;grid-template-columns:minmax(180px,1.7fr) minmax(72px,.55fr) minmax(70px,.5fr) minmax(100px,.7fr) minmax(88px,.6fr) 34px;gap:8px;align-items:center;margin-top:8px; }
+.invoice-item-row input { width:100%;border:1px solid var(--line);border-radius:7px;padding:7px 8px;font:13px 'Inter',sans-serif;background:#fff;color:var(--ink); }
+.invoice-total { border-top:1px solid var(--line);margin-top:10px;padding-top:10px; }
 .table-wrap { background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:auto;-webkit-overflow-scrolling:touch; }
 table { width:100%;border-collapse:collapse;font-size:13px; }
 th { text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap; }

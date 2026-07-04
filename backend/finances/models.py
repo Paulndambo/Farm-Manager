@@ -1,6 +1,125 @@
 from django.db import models
 
 
+class TradingPartner(models.Model):
+    class PartnerType(models.TextChoices):
+        SUPPLIER = "Supplier", "Supplier"
+        CUSTOMER = "Customer", "Customer"
+        BOTH = "Both", "Both"
+
+    farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="trading_partners")
+    name = models.CharField(max_length=180)
+    partner_type = models.CharField(max_length=20, choices=PartnerType.choices)
+    contact_person = models.CharField(max_length=160, blank=True)
+    phone = models.CharField(max_length=40, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.CharField(max_length=240, blank=True)
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class FarmContract(models.Model):
+    class Direction(models.TextChoices):
+        SUPPLY_TO_FARM = "Supply to farm", "Supply to farm"
+        FARM_OUTPUT = "Farm output", "Farm output"
+
+    class Status(models.TextChoices):
+        DRAFT = "Draft", "Draft"
+        ACTIVE = "Active", "Active"
+        PAUSED = "Paused", "Paused"
+        ENDED = "Ended", "Ended"
+
+    class BillingCycle(models.TextChoices):
+        ON_DELIVERY = "On delivery", "On delivery"
+        WEEKLY = "Weekly", "Weekly"
+        MONTHLY = "Monthly", "Monthly"
+        SEASONAL = "Seasonal", "Seasonal"
+        OTHER = "Other", "Other"
+
+    farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="contracts")
+    partner = models.ForeignKey(TradingPartner, on_delete=models.CASCADE, related_name="contracts")
+    direction = models.CharField(max_length=30, choices=Direction.choices)
+    title = models.CharField(max_length=180)
+    goods_or_services = models.CharField(max_length=240)
+    start_date = models.DateField()
+    end_date = models.DateField(null=True, blank=True)
+    billing_cycle = models.CharField(max_length=30, choices=BillingCycle.choices, default=BillingCycle.MONTHLY)
+    agreed_rate = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    terms = models.TextField(blank=True)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-start_date", "title"]
+
+    def __str__(self):
+        return self.title
+
+
+class Invoice(models.Model):
+    class Direction(models.TextChoices):
+        PAYABLE = "Payable", "Payable"
+        RECEIVABLE = "Receivable", "Receivable"
+
+    class Status(models.TextChoices):
+        DRAFT = "Draft", "Draft"
+        ISSUED = "Issued", "Issued"
+        PART_PAID = "Part paid", "Part paid"
+        PAID = "Paid", "Paid"
+        OVERDUE = "Overdue", "Overdue"
+        CANCELLED = "Cancelled", "Cancelled"
+
+    farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="invoices")
+    partner = models.ForeignKey(TradingPartner, on_delete=models.CASCADE, related_name="invoices")
+    contract = models.ForeignKey(FarmContract, on_delete=models.SET_NULL, related_name="invoices", null=True, blank=True)
+    direction = models.CharField(max_length=20, choices=Direction.choices)
+    invoice_number = models.CharField(max_length=80)
+    issue_date = models.DateField()
+    due_date = models.DateField(null=True, blank=True)
+    description = models.CharField(max_length=240)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ISSUED)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-issue_date", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["farm", "invoice_number"], name="unique_invoice_number_per_farm")
+        ]
+
+    def __str__(self):
+        return f"{self.invoice_number} {self.amount}"
+
+
+class InvoiceItem(models.Model):
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="items")
+    description = models.CharField(max_length=240)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    unit = models.CharField(max_length=40, blank=True)
+    unit_price = models.DecimalField(max_digits=12, decimal_places=2)
+    line_total = models.DecimalField(max_digits=12, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["id"]
+
+    def save(self, *args, **kwargs):
+        self.line_total = (self.quantity or 0) * (self.unit_price or 0)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.description} {self.line_total}"
+
+
 class Sale(models.Model):
     class SaleType(models.TextChoices):
         ANIMAL = "Animal sale", "Animal sale"

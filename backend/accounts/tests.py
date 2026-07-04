@@ -72,6 +72,49 @@ class FarmScopingTests(TestCase):
         self.assertEqual(response.data["farm"]["id"], farm.id)
         self.assertEqual(response.data["phoneNumber"], "+254700000000")
 
+    def test_user_list_returns_every_user_for_current_farm(self):
+        farm = Farm.objects.create(name="Admin Farm")
+        other_farm = Farm.objects.create(name="Other Farm")
+        admin = User.objects.create_user(
+            username="admin@example.com",
+            email="admin@example.com",
+            password="secret123",
+            role=User.Role.ADMIN,
+            farm=farm,
+        )
+        User.objects.create_user(
+            username="manager@example.com",
+            email="manager@example.com",
+            password="secret123",
+            role=User.Role.MANAGER,
+            farm=farm,
+        )
+        User.objects.create_user(
+            username="disabled@example.com",
+            email="disabled@example.com",
+            password="secret123",
+            role=User.Role.WORKER,
+            status=User.Status.DISABLED,
+            is_active=False,
+            farm=farm,
+        )
+        User.objects.create_user(
+            username="other@example.com",
+            email="other@example.com",
+            password="secret123",
+            role=User.Role.WORKER,
+            farm=other_farm,
+        )
+
+        self.client.force_authenticate(admin)
+        response = self.client.get("/api/users/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            {user["email"] for user in response.data},
+            {"admin@example.com", "manager@example.com", "disabled@example.com"},
+        )
+
     def test_livestock_list_is_scoped_to_logged_in_users_farm(self):
         farm_a = Farm.objects.create(name="Farm A")
         farm_b = Farm.objects.create(name="Farm B")

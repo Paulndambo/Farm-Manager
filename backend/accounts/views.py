@@ -45,7 +45,7 @@ class UserViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminRole]
 
     def get_queryset(self):
-        return User.objects.filter(farm=self.request.user.farm).exclude(id=self.request.user.id)
+        return User.objects.filter(farm=self.request.user.farm)
 
     def destroy(self, request, *args, **kwargs):
         user = self.get_object()
