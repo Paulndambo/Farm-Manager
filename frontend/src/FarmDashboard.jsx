@@ -697,21 +697,31 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
 }
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
-function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, expenses, loans, onNavigate }) {
+function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, expenses, loans, invoices, onNavigate }) {
   const totalAnimals = animals.length;
   const activeAnimals = animals.filter(a=>!["Sold","Deceased"].includes(a.status)).length;
+  const purchasedAnimals = animals.filter(a=>a.origin==="Purchased").length;
+  const bornAnimals = animals.filter(a=>a.origin==="Born in herd").length;
+  const currentHerdValue = animals.reduce((sum,a)=>sum+(Number(a.currentValue)||0),0);
   const openHealth = healthEvents.filter(h=>!h.resolved).length;
   const dueVaccinations = vaccinations.filter(v=>{ const s=getVaxStatus(v.nextDue); return s.tone==="warning"||s.tone==="danger"; }).length;
   const lowFeed = feedItems.filter(f=>getFeedStatus(f).tone!=="success").length;
   const totalRevenue = (sales||[]).reduce((s,x)=>s+x.amount,0);
   const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0);
   const netProfit = totalRevenue - totalExpenses;
+  const thisMonthKey = monthKey(todayStr());
+  const monthRevenue = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthExpenses = (expenses||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthNet = monthRevenue - monthExpenses;
   const outstandingDebt = (loans||[]).reduce((s,x)=>s+x.outstandingBalance,0);
+  const receivableOutstanding = (invoices||[]).filter(i=>i.direction==="Receivable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
+  const payableOutstanding = (invoices||[]).filter(i=>i.direction==="Payable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
   const alerts = [
     openHealth > 0 && { label:"Open health issues", value:openHealth, tone:"warning", target:"livestock" },
     dueVaccinations > 0 && { label:"Vaccinations due", value:dueVaccinations, tone:"danger", target:"vaccinations" },
     lowFeed > 0 && { label:"Feed items low", value:lowFeed, tone:"warning", target:"feed" },
     outstandingDebt > 0 && { label:"Loan balance", value:currencyShort(outstandingDebt), tone:"neutral", target:"loans" },
+    payableOutstanding > 0 && { label:"Bills payable", value:currencyShort(payableOutstanding), tone:"warning", target:"contracts" },
   ].filter(Boolean);
 
   if (totalAnimals===0 && feedItems.length===0) return (
@@ -737,6 +747,8 @@ function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, 
           </div>
           <ul className="list-rows">
             <li><span>Total animals</span><strong className="mono">{totalAnimals}</strong></li>
+            <li><span>Herd value</span><strong className="mono">{currency(currentHerdValue)}</strong></li>
+            <li><span>Origin split</span><strong className="mono">{purchasedAnimals} purchased / {bornAnimals} born</strong></li>
             <li><span>Vaccinations due</span><Badge tone={dueVaccinations>0?"danger":"success"}>{dueVaccinations}</Badge></li>
             <li><span>Feed items low</span><Badge tone={lowFeed>0?"warning":"success"}>{lowFeed}</Badge></li>
           </ul>
@@ -751,11 +763,16 @@ function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, 
             <li><span>Revenue</span><strong className="mono trend-up">{currency(totalRevenue)}</strong></li>
             <li><span>Expenses</span><strong className="mono trend-down">{currency(totalExpenses)}</strong></li>
             <li><span>Net profit / loss</span><strong className={`mono ${netProfit>=0?"trend-up":"trend-down"}`}>{netProfit>=0?"+":"-"}{currency(Math.abs(netProfit))}</strong></li>
+            <li><span>This month</span><strong className={`mono ${monthNet>=0?"trend-up":"trend-down"}`}>{monthNet>=0?"+":"-"}{currency(Math.abs(monthNet))}</strong></li>
+            <li><span>To collect / pay</span><strong className="mono">{currencyShort(receivableOutstanding)} / {currencyShort(payableOutstanding)}</strong></li>
           </ul>
         </div>
 
         <div className="panel panel--wide">
-          <div className="panel__head"><h3><Activity size={16}/>Attention needed</h3></div>
+          <div className="panel__head">
+            <h3><Activity size={16}/>Attention needed</h3>
+            <button className="link-btn" onClick={()=>onNavigate("statement")}>Statement <ChevronRight size={13}/></button>
+          </div>
           {alerts.length===0 ? <p className="muted small">Nothing urgent right now.</p> : (
             <ul className="list-rows">
               {alerts.map(alert=>(
@@ -1015,27 +1032,31 @@ function AnimalsPage({ animals, healthEvents, onAdd, onDelete, onOpen }) {
           <table>
             <thead>
               <tr>
-                <th>Ear tag</th><th>Name</th><th>Species</th><th>Breed</th>
-                <th>Sex</th><th>Age</th><th>Status</th><th>Weight</th>
-                <th>Value</th><th>ROI</th><th>Origin</th><th>Location</th><th>Issues</th><th/>
+                <th>Animal</th><th>Type</th><th>Status</th><th>Weight</th>
+                <th>Value</th><th>Issues</th><th/>
               </tr>
             </thead>
             <tbody>
               {filtered.map(a=>(
                 <tr key={a.id} className="clickable" onClick={()=>onOpen(a.id)}>
-                  <td><EarTag>{a.tagId}</EarTag></td>
-                  <td>{a.name||"—"}</td>
-                  <td>{a.species}</td>
-                  <td>{a.breed||"—"}</td>
-                  <td>{a.sex}</td>
-                  <td className="mono">{calcAge(a.dob)}</td>
+                  <td>
+                    <div className="table-primary">
+                      <EarTag>{a.tagId}</EarTag>
+                      <strong>{a.name||"Unnamed"}</strong>
+                    </div>
+                    <div className="muted small">{a.location||"No location"} - {calcAge(a.dob)} old - {a.sex}</div>
+                  </td>
+                  <td>
+                    <strong>{a.species}</strong>
+                    <div className="muted small">{a.breed||"No breed"} - {a.origin||"Origin not set"}</div>
+                  </td>
                   <td><Badge tone={statusTone(a.status)}>{a.status}</Badge></td>
-                  <td className="mono">{a.weightKg?`${a.weightKg} kg`:"—"}</td>
-                  <td className="mono">{a.currentValue?currencyShort(a.currentValue):"—"}</td>
-                  <td className={`mono ${animalRoi(a)===null||animalRoi(a)>=0?"trend-up":"trend-down"}`}>{roiLabel(animalRoi(a))}</td>
-                  <td><Badge tone={a.origin==="Purchased"?"warning":"neutral"}>{a.origin||"—"}</Badge></td>
-                  <td>{a.location||"—"}</td>
-                  <td>{openHealth(a.id)>0?<Badge tone="danger">{openHealth(a.id)}</Badge>:"—"}</td>
+                  <td className="mono">{a.weightKg?`${a.weightKg} kg`:"-"}</td>
+                  <td>
+                    <strong className="mono">{a.currentValue?currencyShort(a.currentValue):"-"}</strong>
+                    <div className={`small mono ${animalRoi(a)===null||animalRoi(a)>=0?"trend-up":"trend-down"}`}>{roiLabel(animalRoi(a))}</div>
+                  </td>
+                  <td>{openHealth(a.id)>0?<Badge tone="danger">{openHealth(a.id)}</Badge>:"-"}</td>
                   <td className="actions-cell">
                     <button className="icon-btn icon-btn--danger" onClick={e=>{e.stopPropagation();setConfirmId(a.id);}} aria-label="Delete"><Trash2 size={15}/></button>
                   </td>
@@ -2487,7 +2508,7 @@ export default function FarmApp() {
             </header>
             <div className="content">
               {apiError && <div className="form-error" style={{marginBottom:16}}>{apiError}</div>}
-              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
+              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} invoices={invoices} onNavigate={setActiveTab}/>}
               {activeTab==="livestock"    && <LivestockOverviewPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} onNavigate={setActiveTab}/>}
               {activeTab==="animals"      && <AnimalsPage animals={animals} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
               {activeTab==="vaccinations" && <VaccinationsPage animals={animals} vaccinations={vaccinations} onAdd={()=>{setDefaultAnimal(null);setShowVaxForm(true);}} onDelete={deleteVaccination}/>}
@@ -2640,6 +2661,7 @@ td { padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle
 tr:last-child td { border-bottom:none; }
 tr.clickable { cursor:pointer; }
 tr.clickable:hover { background:#F3EDDD; }
+.table-primary { display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px; }
 .actions-cell { display:flex;gap:6px;align-items:center;justify-content:flex-end;white-space:nowrap; }
 .mini-table { width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px; }
 .mini-table th { text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;padding:6px 0;border-bottom:1px solid var(--line); }
