@@ -30,17 +30,25 @@ const INVOICE_DIRECTIONS = ["Payable","Receivable"];
 const INVOICE_STATUSES = ["Draft","Issued","Part paid","Paid","Overdue","Cancelled"];
 const LOAN_STATUSES = ["Active","Paid","Defaulted","Written off"];
 const LOAN_PAYMENT_FREQUENCIES = ["Weekly","Monthly","Quarterly","Seasonal","Flexible"];
+const MONTH_OPTIONS = [
+  { value:1, label:"January" }, { value:2, label:"February" }, { value:3, label:"March" },
+  { value:4, label:"April" }, { value:5, label:"May" }, { value:6, label:"June" },
+  { value:7, label:"July" }, { value:8, label:"August" }, { value:9, label:"September" },
+  { value:10, label:"October" }, { value:11, label:"November" }, { value:12, label:"December" },
+];
 const PIE_COLORS     = ["#A23B2E","#D9A441","#3F5D45","#8A7B62","#6C4F3D","#C97B53","#5B7A8C"];
 const BAR_REVENUE    = "#3F5D45";
 const BAR_EXPENSE    = "#A23B2E";
 
 const PAGE_TITLES = {
   dashboard:    "Farm Overview",
+  livestock:    "Livestock Overview",
   animals:      "Livestock Register",
   vaccinations: "Vaccination Records",
   growth:       "Growth Tracking",
   feed:         "Feed Inventory",
   finances:     "Finances",
+  statement:    "Farm Statement",
   contracts:    "Contracts & Invoices",
   loans:        "Loans & Payments",
   sales:        "Sales & Revenue",
@@ -689,7 +697,82 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
 }
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
-function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, feedItems, sales, expenses, loans, onNavigate }) {
+function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, expenses, loans, onNavigate }) {
+  const totalAnimals = animals.length;
+  const activeAnimals = animals.filter(a=>!["Sold","Deceased"].includes(a.status)).length;
+  const openHealth = healthEvents.filter(h=>!h.resolved).length;
+  const dueVaccinations = vaccinations.filter(v=>{ const s=getVaxStatus(v.nextDue); return s.tone==="warning"||s.tone==="danger"; }).length;
+  const lowFeed = feedItems.filter(f=>getFeedStatus(f).tone!=="success").length;
+  const totalRevenue = (sales||[]).reduce((s,x)=>s+x.amount,0);
+  const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0);
+  const netProfit = totalRevenue - totalExpenses;
+  const outstandingDebt = (loans||[]).reduce((s,x)=>s+x.outstandingBalance,0);
+  const alerts = [
+    openHealth > 0 && { label:"Open health issues", value:openHealth, tone:"warning", target:"livestock" },
+    dueVaccinations > 0 && { label:"Vaccinations due", value:dueVaccinations, tone:"danger", target:"vaccinations" },
+    lowFeed > 0 && { label:"Feed items low", value:lowFeed, tone:"warning", target:"feed" },
+    outstandingDebt > 0 && { label:"Loan balance", value:currencyShort(outstandingDebt), tone:"neutral", target:"loans" },
+  ].filter(Boolean);
+
+  if (totalAnimals===0 && feedItems.length===0) return (
+    <EmptyState icon={Sprout} title="The ledger is empty"
+      body="Start by adding livestock records from your farm. The overview will stay focused as the modules fill in."
+      actionLabel="Add livestock" onAction={()=>onNavigate("animals")}/>
+  );
+
+  return (
+    <div className="page">
+      <div className="stat-row">
+        <StatCard icon={PawPrint} label="Animals" value={totalAnimals} sub={`${activeAnimals} active`} tone="green"/>
+        <StatCard icon={Activity} label="Health attention" value={openHealth} sub="unresolved events" tone={openHealth>0?"gold":"ink"}/>
+        <StatCard icon={BadgeDollarSign} label="Net position" value={currencyShort(Math.abs(netProfit))} sub={netProfit>=0?"profit recorded":"loss recorded"} tone={netProfit>=0?"green":"rust"}/>
+        <StatCard icon={Wallet} label="Loan balance" value={currencyShort(outstandingDebt)} sub="outstanding debt" tone={outstandingDebt>0?"gold":"ink"}/>
+      </div>
+
+      <div className="dash-grid">
+        <div className="panel">
+          <div className="panel__head">
+            <h3><PawPrint size={16}/>Livestock snapshot</h3>
+            <button className="link-btn" onClick={()=>onNavigate("livestock")}>Open <ChevronRight size={13}/></button>
+          </div>
+          <ul className="list-rows">
+            <li><span>Total animals</span><strong className="mono">{totalAnimals}</strong></li>
+            <li><span>Vaccinations due</span><Badge tone={dueVaccinations>0?"danger":"success"}>{dueVaccinations}</Badge></li>
+            <li><span>Feed items low</span><Badge tone={lowFeed>0?"warning":"success"}>{lowFeed}</Badge></li>
+          </ul>
+        </div>
+
+        <div className="panel">
+          <div className="panel__head">
+            <h3><BadgeDollarSign size={16}/>Finance snapshot</h3>
+            <button className="link-btn" onClick={()=>onNavigate("finances")}>Open <ChevronRight size={13}/></button>
+          </div>
+          <ul className="list-rows">
+            <li><span>Revenue</span><strong className="mono trend-up">{currency(totalRevenue)}</strong></li>
+            <li><span>Expenses</span><strong className="mono trend-down">{currency(totalExpenses)}</strong></li>
+            <li><span>Net profit / loss</span><strong className={`mono ${netProfit>=0?"trend-up":"trend-down"}`}>{netProfit>=0?"+":"-"}{currency(Math.abs(netProfit))}</strong></li>
+          </ul>
+        </div>
+
+        <div className="panel panel--wide">
+          <div className="panel__head"><h3><Activity size={16}/>Attention needed</h3></div>
+          {alerts.length===0 ? <p className="muted small">Nothing urgent right now.</p> : (
+            <ul className="list-rows">
+              {alerts.map(alert=>(
+                <li key={alert.label}>
+                  <button className="link-btn" onClick={()=>onNavigate(alert.target)}>{alert.label} <ChevronRight size={13}/></button>
+                  <Badge tone={alert.tone}>{alert.value}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LivestockOverviewPage({ animals, vaccinations, growthRecords, healthEvents, feedItems, onNavigate }) {
   const total     = animals.length;
   const healthy   = animals.filter(a=>a.status==="Healthy").length;
   const sick      = animals.filter(a=>a.status==="Sick").length;
@@ -698,13 +781,6 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
   const lowFeedCt = feedItems.filter(f=>getFeedStatus(f).tone!=="success").length;
   const openHealth= healthEvents.filter(h=>!h.resolved).length;
 
-  const totalRevenue  = (sales||[]).reduce((s,x)=>s+x.amount,0);
-  const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0);
-  const outstandingDebt = (loans||[]).reduce((s,x)=>s+x.outstandingBalance,0);
-  const netProfit     = totalRevenue - totalExpenses;
-  const thisMonthKey  = monthKey(todayStr());
-  const monthRev      = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
-  const monthExp      = (expenses||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const totalPurchaseValue = animals.reduce((sum,a)=>sum+(Number(a.purchaseCost)||0),0);
   const totalCurrentValue  = animals.reduce((sum,a)=>sum+(Number(a.currentValue)||0),0);
   const herdValueGain      = totalCurrentValue - totalPurchaseValue;
@@ -770,20 +846,6 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
         <StatCard icon={Wallet}          label="Herd ROI"          value={roiLabel(herdRoi)} sub="current value vs purchase" tone={herdRoi===null||herdRoi>=0?"gold":"rust"}/>
       </div>
 
-      {/* Finance summary strip */}
-      <div className="fin-dash-strip" onClick={()=>onNavigate("finances")} role="button" tabIndex={0} onKeyDown={e=>e.key==="Enter"&&onNavigate("finances")}>
-        <div className="fin-dash-strip__title"><BadgeDollarSign size={15}/>Farm finances <span className="muted small">— click for full report</span></div>
-        <div className="fin-dash-strip__kpis">
-          <div><span className="muted small">Total revenue</span><strong className="trend-up mono">{currency(totalRevenue)}</strong></div>
-          <div><span className="muted small">Total expenses</span><strong className="trend-down mono">{currency(totalExpenses)}</strong></div>
-          <div className="fin-dash-strip__divider"/>
-          <div><span className="muted small">Loan balance</span><strong className="trend-down mono">{currency(outstandingDebt)}</strong></div>
-          <div className="fin-dash-strip__divider"/>
-          <div><span className="muted small">Net profit / loss</span><strong className={`mono ${netProfit>=0?"trend-up":"trend-down"}`}>{netProfit>=0?"+":"-"}{currency(Math.abs(netProfit))}</strong></div>
-          <div><span className="muted small">This month</span><strong className={`mono ${(monthRev-monthExp)>=0?"trend-up":"trend-down"}`}>{(monthRev-monthExp)>=0?"+":"-"}{currency(Math.abs(monthRev-monthExp))}</strong></div>
-        </div>
-        <ChevronRight size={16} style={{color:"var(--muted)",flexShrink:0}}/>
-      </div>
 
       <div className="dash-grid">
         {/* Species breakdown */}
@@ -1614,6 +1676,149 @@ function LoanPaymentForm({ loans, selectedLoanId, onSubmit, onClose }) {
     </form>
   );
 }
+
+function StatementPage({ animals, sales, expenses, loans, invoices }) {
+  const currentYear = new Date().getFullYear();
+  const availableYears = useMemo(()=>{
+    const years = new Set([currentYear]);
+    const collect = date => { const year = Number((date||"").slice(0,4)); if (year) years.add(year); };
+    animals.forEach(a=>{ collect(a.createdAt); collect(a.dob); });
+    sales.forEach(s=>collect(s.date));
+    expenses.forEach(e=>collect(e.date));
+    loans.forEach(l=>{ collect(l.issueDate); (l.payments||[]).forEach(p=>collect(p.date)); });
+    invoices.forEach(i=>collect(i.issueDate));
+    return Array.from(years).sort((a,b)=>b-a);
+  },[animals,sales,expenses,loans,invoices,currentYear]);
+
+  const [year, setYear] = useState(availableYears[0] || currentYear);
+  const [startMonth, setStartMonth] = useState(1);
+  const [endMonth, setEndMonth] = useState(12);
+  const normalizedStart = Math.min(Number(startMonth), Number(endMonth));
+  const normalizedEnd = Math.max(Number(startMonth), Number(endMonth));
+  const periodLabel = `${MONTH_OPTIONS.find(m=>m.value===normalizedStart)?.label} to ${MONTH_OPTIONS.find(m=>m.value===normalizedEnd)?.label} ${year}`;
+
+  function inPeriod(date) {
+    if (!date) return false;
+    const d = new Date(String(date).slice(0,10)+"T00:00:00");
+    if (isNaN(d)) return false;
+    const month = d.getMonth()+1;
+    return d.getFullYear() === Number(year) && month >= normalizedStart && month <= normalizedEnd;
+  }
+
+  const purchasedAnimals = animals.filter(a=>a.origin==="Purchased");
+  const bornAnimals = animals.filter(a=>a.origin==="Born in herd");
+  const activeAnimals = animals.filter(a=>!["Sold","Deceased"].includes(a.status));
+  const periodPurchased = purchasedAnimals.filter(a=>inPeriod(a.createdAt));
+  const periodBorn = bornAnimals.filter(a=>inPeriod(a.dob || a.createdAt));
+  const periodSales = sales.filter(s=>inPeriod(s.date));
+  const periodExpenses = expenses.filter(e=>inPeriod(e.date));
+  const periodLoans = loans.filter(l=>inPeriod(l.issueDate));
+  const loanPayments = loans.flatMap(loan=>(loan.payments||[]).map(payment=>({...payment,loan})));
+  const periodLoanPayments = loanPayments.filter(p=>inPeriod(p.date));
+
+  const herdValue = animals.reduce((sum,a)=>sum+(Number(a.currentValue)||0),0);
+  const activeHerdValue = activeAnimals.reduce((sum,a)=>sum+(Number(a.currentValue)||0),0);
+  const purchaseBasis = animals.reduce((sum,a)=>sum+(Number(a.purchaseCost)||0),0);
+  const periodPurchaseCost = periodPurchased.reduce((sum,a)=>sum+(Number(a.purchaseCost)||0),0);
+  const periodRevenue = periodSales.reduce((sum,s)=>sum+s.amount,0);
+  const periodExpenseTotal = periodExpenses.reduce((sum,e)=>sum+e.amount,0);
+  const periodOperatingProfit = periodRevenue - periodExpenseTotal;
+  const totalLoanPrincipal = loans.reduce((sum,l)=>sum+l.principalAmount,0);
+  const outstandingDebt = loans.reduce((sum,l)=>sum+l.outstandingBalance,0);
+  const periodLoanPrincipal = periodLoans.reduce((sum,l)=>sum+l.principalAmount,0);
+  const periodDebtPaid = periodLoanPayments.reduce((sum,p)=>sum+p.amount,0);
+  const receivableOutstanding = invoices.filter(i=>i.direction==="Receivable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
+  const payableOutstanding = invoices.filter(i=>i.direction==="Payable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
+  const netPosition = activeHerdValue + receivableOutstanding - payableOutstanding - outstandingDebt;
+  const roi = purchaseBasis > 0 ? ((herdValue - purchaseBasis + periodOperatingProfit) / purchaseBasis) * 100 : null;
+  const expenseByCategory = Object.entries(periodExpenses.reduce((acc,e)=>({...acc,[e.category]:(acc[e.category]||0)+e.amount}),{}))
+    .map(([category,total])=>({category,total}))
+    .sort((a,b)=>b.total-a.total)
+    .slice(0,6);
+  const salesByType = Object.entries(periodSales.reduce((acc,s)=>({...acc,[s.type]:(acc[s.type]||0)+s.amount}),{}))
+    .map(([type,total])=>({type,total}))
+    .sort((a,b)=>b.total-a.total)
+    .slice(0,6);
+  const positionTone = netPosition >= 0 ? "green" : "rust";
+
+  return (
+    <div className="page">
+      <div className="toolbar">
+        <select value={year} onChange={e=>setYear(Number(e.target.value))}>{availableYears.map(y=><option key={y} value={y}>{y}</option>)}</select>
+        <select value={startMonth} onChange={e=>setStartMonth(Number(e.target.value))}>{MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select>
+        <select value={endMonth} onChange={e=>setEndMonth(Number(e.target.value))}>{MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select>
+        <span className="muted small">Showing {periodLabel}</span>
+      </div>
+
+      <div className="stat-row fin-stats">
+        <StatCard icon={PawPrint} label="Animals" value={animals.length} sub={`${purchasedAnimals.length} purchased, ${bornAnimals.length} born`} tone="green"/>
+        <StatCard icon={Banknote} label="Sales" value={currencyShort(periodRevenue)} sub={`${periodSales.length} records in period`} tone="green"/>
+        <StatCard icon={Receipt} label="Expenses" value={currencyShort(periodExpenseTotal)} sub={`${periodExpenses.length} records in period`} tone="rust"/>
+        <StatCard icon={positionTone==="green"?Wallet:TrendingDown} label="Net worth position" value={currencyShort(Math.abs(netPosition))} sub={netPosition>=0?"assets above liabilities":"liabilities above assets"} tone={positionTone}/>
+      </div>
+
+      <div className="dash-grid">
+        <div className="panel">
+          <div className="panel__head"><h3><PawPrint size={16}/>Herd capital</h3></div>
+          <ul className="list-rows">
+            <li><span>Current herd value</span><strong className="mono">{currency(herdValue)}</strong></li>
+            <li><span>Active herd value</span><strong className="mono">{currency(activeHerdValue)}</strong></li>
+            <li><span>Purchase basis</span><strong className="mono">{currency(purchaseBasis)}</strong></li>
+            <li><span>Period purchases</span><strong className="mono">{periodPurchased.length} animals / {currency(periodPurchaseCost)}</strong></li>
+            <li><span>Period births</span><strong className="mono">{periodBorn.length} animals</strong></li>
+          </ul>
+        </div>
+
+        <div className="panel">
+          <div className="panel__head"><h3><BadgeDollarSign size={16}/>Operating result</h3></div>
+          <ul className="list-rows">
+            <li><span>Sales revenue</span><strong className="mono trend-up">{currency(periodRevenue)}</strong></li>
+            <li><span>Operating expenses</span><strong className="mono trend-down">{currency(periodExpenseTotal)}</strong></li>
+            <li><span>Operating profit / loss</span><strong className={`mono ${periodOperatingProfit>=0?"trend-up":"trend-down"}`}>{periodOperatingProfit>=0?"+":"-"}{currency(Math.abs(periodOperatingProfit))}</strong></li>
+            <li><span>Return on investment</span><strong className={`mono ${roi===null||roi>=0?"trend-up":"trend-down"}`}>{roi===null?"-":`${roi>=0?"+":""}${roi.toFixed(1)}%`}</strong></li>
+          </ul>
+        </div>
+
+        <div className="panel">
+          <div className="panel__head"><h3><Wallet size={16}/>Loans and liabilities</h3></div>
+          <ul className="list-rows">
+            <li><span>Total loan principal</span><strong className="mono">{currency(totalLoanPrincipal)}</strong></li>
+            <li><span>Outstanding loan balance</span><strong className="mono trend-down">{currency(outstandingDebt)}</strong></li>
+            <li><span>New loans in period</span><strong className="mono">{currency(periodLoanPrincipal)}</strong></li>
+            <li><span>Loan payments in period</span><strong className="mono">{currency(periodDebtPaid)}</strong></li>
+            <li><span>Bills payable</span><strong className="mono trend-down">{currency(payableOutstanding)}</strong></li>
+          </ul>
+        </div>
+
+        <div className="panel">
+          <div className="panel__head"><h3><FileText size={16}/>Receivables and position</h3></div>
+          <ul className="list-rows">
+            <li><span>Customer invoices to collect</span><strong className="mono trend-up">{currency(receivableOutstanding)}</strong></li>
+            <li><span>Supplier invoices to pay</span><strong className="mono trend-down">{currency(payableOutstanding)}</strong></li>
+            <li><span>Assets counted</span><strong className="mono">{currency(activeHerdValue + receivableOutstanding)}</strong></li>
+            <li><span>Liabilities counted</span><strong className="mono">{currency(outstandingDebt + payableOutstanding)}</strong></li>
+            <li><span>Overall position</span><strong className={`mono ${netPosition>=0?"trend-up":"trend-down"}`}>{netPosition>=0?"+":"-"}{currency(Math.abs(netPosition))}</strong></li>
+          </ul>
+        </div>
+
+        <div className="panel">
+          <div className="panel__head"><h3>Sales by type</h3></div>
+          {salesByType.length===0 ? <p className="muted small">No sales in this period.</p> : (
+            <table className="mini-table"><tbody>{salesByType.map(row=><tr key={row.type}><td>{row.type}</td><td className="mono trend-up">{currency(row.total)}</td></tr>)}</tbody></table>
+          )}
+        </div>
+
+        <div className="panel">
+          <div className="panel__head"><h3>Expenses by category</h3></div>
+          {expenseByCategory.length===0 ? <p className="muted small">No expenses in this period.</p> : (
+            <table className="mini-table"><tbody>{expenseByCategory.map(row=><tr key={row.category}><td>{row.category}</td><td className="mono trend-down">{currency(row.total)}</td></tr>)}</tbody></table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FinancesPage({ sales, expenses, loans, onNavigate }) {
   const totalRevenue    = sales.reduce((s,x)=>s+x.amount,0);
   const totalExpenses   = expenses.reduce((s,x)=>s+x.amount,0);
@@ -2076,6 +2281,7 @@ function ExpensesPage({ expenses, onAdd, onDelete }) {
 const NAV_SECTIONS = [
   { items:[{key:"dashboard",label:"Overview",icon:LayoutDashboard}] },
   { label:"Livestock", items:[
+    {key:"livestock",    label:"Overview",     icon:Activity},
     {key:"animals",      label:"Animals",      icon:PawPrint},
     {key:"vaccinations", label:"Vaccinations", icon:Syringe},
     {key:"growth",       label:"Growth",       icon:TrendingUp},
@@ -2083,6 +2289,7 @@ const NAV_SECTIONS = [
   ]},
   { label:"Finance", items:[
     {key:"finances",  label:"Overview",      icon:BadgeDollarSign},
+    {key:"statement", label:"Statement",     icon:FileText},
     {key:"contracts", label:"Contracts", icon:FileText},
     {key:"loans",     label:"Loans", icon:Wallet},
     {key:"sales",     label:"Sales", icon:Banknote},
@@ -2280,12 +2487,14 @@ export default function FarmApp() {
             </header>
             <div className="content">
               {apiError && <div className="form-error" style={{marginBottom:16}}>{apiError}</div>}
-              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
+              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
+              {activeTab==="livestock"    && <LivestockOverviewPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} onNavigate={setActiveTab}/>}
               {activeTab==="animals"      && <AnimalsPage animals={animals} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
               {activeTab==="vaccinations" && <VaccinationsPage animals={animals} vaccinations={vaccinations} onAdd={()=>{setDefaultAnimal(null);setShowVaxForm(true);}} onDelete={deleteVaccination}/>}
               {activeTab==="growth"       && <GrowthPage animals={animals} growthRecords={growthRecords} onAdd={()=>{setDefaultAnimal(null);setShowGrowthForm(true);}} onDelete={deleteGrowth}/>}
               {activeTab==="feed"         && <FeedPage feedItems={feedItems} onAdd={()=>setShowFeedForm(true)} onAdjust={adjustFeed} onDelete={deleteFeed}/>}
               {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
+              {activeTab==="statement"    && <StatementPage animals={animals} sales={sales} expenses={expenses} loans={loans} invoices={invoices}/>}
               {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
               {activeTab==="loans"        && <LoansPage loans={loans} onAddLoan={()=>setShowLoanForm(true)} onAddPayment={id=>setLoanPaymentLoanId(id || "")} onDeleteLoan={deleteLoan} onDeletePayment={deleteLoanPayment}/>}
               {activeTab==="sales"        && <SalesPage sales={sales} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
@@ -2529,7 +2738,6 @@ tr.clickable:hover { background:#F3EDDD; }
 /* Finance dashboard strip (on Overview page) */
 .fin-dash-strip { display:flex;align-items:center;gap:16px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 18px;cursor:pointer;transition:background .12s; }
 .fin-dash-strip:hover { background:#F3EDDD; }
-.fin-dash-strip__title { display:flex;align-items:center;gap:7px;font-family:'Zilla Slab',serif;font-size:14.5px;font-weight:600;white-space:nowrap;color:var(--ink); }
 .fin-dash-strip__kpis { display:flex;align-items:center;gap:24px;flex:1;flex-wrap:wrap; }
 .fin-dash-strip__kpis > div { display:flex;flex-direction:column;gap:2px; }
 .fin-dash-strip__kpis strong { font-size:15px; }
