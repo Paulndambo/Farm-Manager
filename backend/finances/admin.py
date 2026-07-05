@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Expense, FarmContract, Invoice, InvoiceItem, Sale, TradingPartner
+from .models import Expense, FarmContract, Invoice, InvoiceItem, Loan, LoanPayment, Sale, TradingPartner
 
 
 @admin.register(TradingPartner)
@@ -28,6 +28,20 @@ class InvoiceAdmin(admin.ModelAdmin):
 class InvoiceItemAdmin(admin.ModelAdmin):
     list_display = ("invoice", "description", "quantity", "unit", "unit_price", "line_total")
     search_fields = ("invoice__invoice_number", "description")
+
+
+@admin.register(Loan)
+class LoanAdmin(admin.ModelAdmin):
+    list_display = ("lender", "farm", "purpose", "principal_amount", "interest_rate", "status", "due_date")
+    list_filter = ("status", "payment_frequency", "farm")
+    search_fields = ("lender", "purpose", "collateral")
+
+
+@admin.register(LoanPayment)
+class LoanPaymentAdmin(admin.ModelAdmin):
+    list_display = ("loan", "date", "amount", "method", "reference")
+    list_filter = ("date", "method")
+    search_fields = ("loan__lender", "reference", "notes")
 
 
 @admin.register(Sale)

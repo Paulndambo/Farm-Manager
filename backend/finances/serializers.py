@@ -4,7 +4,7 @@ from rest_framework import serializers
 from inventory.models import FeedItem
 from livestock.models import Animal
 
-from .models import Expense, FarmContract, Invoice, InvoiceItem, Sale, TradingPartner
+from .models import Expense, FarmContract, Invoice, InvoiceItem, Loan, LoanPayment, Sale, TradingPartner
 
 
 class TradingPartnerSerializer(serializers.ModelSerializer):
@@ -150,6 +150,54 @@ class InvoiceSerializer(serializers.ModelSerializer):
             total += line.line_total
         invoice.amount = total
         invoice.save(update_fields=["amount"])
+
+
+class LoanPaymentSerializer(serializers.ModelSerializer):
+    loanId = serializers.PrimaryKeyRelatedField(source="loan", queryset=Loan.objects.all())
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = LoanPayment
+        fields = ["id", "loanId", "date", "amount", "method", "reference", "notes", "createdAt"]
+
+    def validate_loanId(self, loan):
+        if loan.farm_id != self.context["request"].user.farm_id:
+            raise serializers.ValidationError("Loan does not belong to your farm.")
+        return loan
+
+
+class LoanSerializer(serializers.ModelSerializer):
+    principalAmount = serializers.DecimalField(source="principal_amount", max_digits=12, decimal_places=2)
+    interestRate = serializers.DecimalField(source="interest_rate", max_digits=5, decimal_places=2, required=False)
+    issueDate = serializers.DateField(source="issue_date")
+    dueDate = serializers.DateField(source="due_date", required=False, allow_null=True)
+    paymentFrequency = serializers.CharField(source="payment_frequency")
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    payments = LoanPaymentSerializer(many=True, read_only=True)
+    totalDue = serializers.DecimalField(source="total_due", max_digits=12, decimal_places=2, read_only=True)
+    totalPaid = serializers.DecimalField(source="total_paid", max_digits=12, decimal_places=2, read_only=True)
+    outstandingBalance = serializers.DecimalField(source="outstanding_balance", max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Loan
+        fields = [
+            "id",
+            "lender",
+            "purpose",
+            "principalAmount",
+            "interestRate",
+            "issueDate",
+            "dueDate",
+            "paymentFrequency",
+            "status",
+            "collateral",
+            "notes",
+            "totalDue",
+            "totalPaid",
+            "outstandingBalance",
+            "payments",
+            "createdAt",
+        ]
 
 
 class SaleSerializer(serializers.ModelSerializer):

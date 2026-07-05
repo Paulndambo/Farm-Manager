@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 
 from farms.models import Farm
 
-from .models import FarmContract, Invoice, TradingPartner
+from .models import FarmContract, Invoice, Loan, TradingPartner
 
 
 User = get_user_model()
@@ -194,3 +194,70 @@ class ContractInvoiceTests(TestCase):
         self.assertEqual([partner["name"] for partner in partners_response.data], ["Farm Customer"])
         self.assertEqual([contract["title"] for contract in contracts_response.data], ["Egg supply"])
         self.assertEqual([invoice["invoiceNumber"] for invoice in invoices_response.data], ["EGG-001"])
+
+    def test_loans_and_payments_track_outstanding_balances_by_farm(self):
+        loan_response = self.client.post(
+            "/api/loans/",
+            {
+                "lender": "Agri Credit SACCO",
+                "purpose": "Dairy shed expansion",
+                "principalAmount": "100000.00",
+                "interestRate": "12.50",
+                "issueDate": "2026-07-01",
+                "dueDate": "2027-07-01",
+                "paymentFrequency": Loan.PaymentFrequency.MONTHLY,
+                "status": Loan.Status.ACTIVE,
+                "collateral": "Milk deliveries",
+            },
+            format="json",
+        )
+
+        self.assertEqual(loan_response.status_code, 201)
+        self.assertEqual(loan_response.data["totalDue"], "112500.00")
+        self.assertEqual(loan_response.data["outstandingBalance"], "112500.00")
+
+        payment_response = self.client.post(
+            "/api/loan-payments/",
+            {
+                "loanId": loan_response.data["id"],
+                "date": "2026-08-01",
+                "amount": "15000.00",
+                "method": "M-Pesa",
+                "reference": "QH123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(payment_response.status_code, 201)
+
+        loans_response = self.client.get("/api/loans/")
+        self.assertEqual(len(loans_response.data), 1)
+        self.assertEqual(loans_response.data[0]["totalPaid"], "15000.00")
+        self.assertEqual(loans_response.data[0]["outstandingBalance"], "97500.00")
+        self.assertEqual(len(loans_response.data[0]["payments"]), 1)
+
+        other_loan = Loan.objects.create(
+            farm=self.other_farm,
+            lender="Hidden Bank",
+            purpose="Hidden",
+            principal_amount="20000.00",
+            interest_rate="10.00",
+            issue_date="2026-07-01",
+        )
+        blocked_payment = self.client.post(
+            "/api/loan-payments/",
+            {
+                "loanId": other_loan.id,
+                "date": "2026-08-01",
+                "amount": "1000.00",
+            },
+            format="json",
+        )
+
+        summary_response = self.client.get("/api/finances/summary/")
+
+        self.assertEqual(blocked_payment.status_code, 400)
+        self.assertEqual(summary_response.data["loans"]["totalPrincipal"], "100000.00")
+        self.assertEqual(summary_response.data["loans"]["totalDebt"], "112500.00")
+        self.assertEqual(summary_response.data["loans"]["totalPaid"], "15000.00")
+        self.assertEqual(summary_response.data["loans"]["outstandingDebt"], "97500.00")

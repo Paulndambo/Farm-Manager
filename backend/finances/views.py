@@ -13,18 +13,20 @@ from accounts.permissions import IsActiveFarmUser
 from inventory.models import FeedItem
 from livestock.models import Animal, HealthEvent, Vaccination
 
-from .models import Expense, FarmContract, Invoice, Sale, TradingPartner
+from .models import Expense, FarmContract, Invoice, Loan, LoanPayment, Sale, TradingPartner
 from .serializers import (
     ExpenseSerializer,
     FarmContractSerializer,
     InvoiceSerializer,
+    LoanPaymentSerializer,
+    LoanSerializer,
     SaleSerializer,
     TradingPartnerSerializer,
 )
 
 
 def money(value):
-    return str(value or Decimal("0"))
+    return str((value or Decimal("0")).quantize(Decimal("0.01")))
 
 
 class SaleViewSet(viewsets.ModelViewSet):
@@ -82,6 +84,25 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         serializer.save(farm=self.request.user.farm)
 
 
+class LoanViewSet(viewsets.ModelViewSet):
+    serializer_class = LoanSerializer
+    permission_classes = [IsActiveFarmUser]
+
+    def get_queryset(self):
+        return Loan.objects.filter(farm=self.request.user.farm).prefetch_related("payments")
+
+    def perform_create(self, serializer):
+        serializer.save(farm=self.request.user.farm)
+
+
+class LoanPaymentViewSet(viewsets.ModelViewSet):
+    serializer_class = LoanPaymentSerializer
+    permission_classes = [IsActiveFarmUser]
+
+    def get_queryset(self):
+        return LoanPayment.objects.filter(loan__farm=self.request.user.farm).select_related("loan")
+
+
 @api_view(["GET"])
 @permission_classes([IsActiveFarmUser])
 def dashboard_summary(request):
@@ -118,6 +139,11 @@ def finance_summary(request):
 def build_finance_summary(farm):
     total_revenue = Sale.objects.filter(farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
     total_expenses = Expense.objects.filter(farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    loans = Loan.objects.filter(farm=farm).prefetch_related("payments")
+    total_principal = sum((loan.principal_amount for loan in loans), start=Decimal("0"))
+    total_debt = sum((loan.total_due for loan in loans), start=Decimal("0"))
+    total_loan_paid = LoanPayment.objects.filter(loan__farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    outstanding_debt = max(total_debt - total_loan_paid, Decimal("0"))
     net = total_revenue - total_expenses
     margin = (net / total_revenue * Decimal("100")) if total_revenue else Decimal("0")
 
@@ -152,6 +178,13 @@ def build_finance_summary(farm):
             }
             for month, values in sorted(monthly.items())
         ],
+        "loans": {
+            "totalPrincipal": money(total_principal),
+            "totalDebt": money(total_debt),
+            "totalPaid": money(total_loan_paid),
+            "outstandingDebt": money(outstanding_debt),
+            "activeCount": loans.filter(status=Loan.Status.ACTIVE).count(),
+        },
     }
 
 

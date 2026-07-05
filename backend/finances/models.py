@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import models
 
 
@@ -118,6 +120,74 @@ class InvoiceItem(models.Model):
 
     def __str__(self):
         return f"{self.description} {self.line_total}"
+
+
+class Loan(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "Active", "Active"
+        PAID = "Paid", "Paid"
+        DEFAULTED = "Defaulted", "Defaulted"
+        WRITTEN_OFF = "Written off", "Written off"
+
+    class PaymentFrequency(models.TextChoices):
+        WEEKLY = "Weekly", "Weekly"
+        MONTHLY = "Monthly", "Monthly"
+        QUARTERLY = "Quarterly", "Quarterly"
+        SEASONAL = "Seasonal", "Seasonal"
+        FLEXIBLE = "Flexible", "Flexible"
+
+    farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="loans")
+    lender = models.CharField(max_length=180)
+    purpose = models.CharField(max_length=240)
+    principal_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    interest_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    issue_date = models.DateField()
+    due_date = models.DateField(null=True, blank=True)
+    payment_frequency = models.CharField(
+        max_length=30,
+        choices=PaymentFrequency.choices,
+        default=PaymentFrequency.MONTHLY,
+    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    collateral = models.CharField(max_length=180, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["status", "due_date", "-issue_date", "lender"]
+
+    @property
+    def total_due(self):
+        interest = self.principal_amount * (self.interest_rate or 0) / 100
+        return (self.principal_amount + interest).quantize(Decimal("0.01"))
+
+    @property
+    def total_paid(self):
+        total = sum((payment.amount for payment in self.payments.all()), start=Decimal("0"))
+        return total.quantize(Decimal("0.01"))
+
+    @property
+    def outstanding_balance(self):
+        return max(self.total_due - self.total_paid, Decimal("0")).quantize(Decimal("0.01"))
+
+    def __str__(self):
+        return f"{self.lender} {self.principal_amount}"
+
+
+class LoanPayment(models.Model):
+    loan = models.ForeignKey(Loan, on_delete=models.CASCADE, related_name="payments")
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    method = models.CharField(max_length=80, blank=True)
+    reference = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.loan.lender} payment {self.amount}"
 
 
 class Sale(models.Model):
