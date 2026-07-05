@@ -4,7 +4,7 @@ import {
   Plus, X, Menu, Search, Trash2, CheckCircle2, ArrowUp, ArrowDown,
   Package, ChevronRight, Sprout, Users, UserPlus, LogOut, Ban,
   Pencil, Lock, Activity, Heart, FileText,
-  Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign, Settings,
+  Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign, Settings, Printer,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -723,6 +723,16 @@ function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, 
     outstandingDebt > 0 && { label:"Loan balance", value:currencyShort(outstandingDebt), tone:"neutral", target:"loans" },
     payableOutstanding > 0 && { label:"Bills payable", value:currencyShort(payableOutstanding), tone:"warning", target:"contracts" },
   ].filter(Boolean);
+  const nextActions = [
+    openHealth > 0 && { label:"Resolve open health cases", detail:`${openHealth} animal issue${openHealth===1?"":"s"} need follow-up`, target:"livestock", tone:"warning" },
+    dueVaccinations > 0 && { label:"Review vaccination schedule", detail:`${dueVaccinations} due or overdue`, target:"vaccinations", tone:"danger" },
+    lowFeed > 0 && { label:"Restock feed before it runs low", detail:`${lowFeed} feed item${lowFeed===1?"":"s"} below comfort level`, target:"feed", tone:"warning" },
+    payableOutstanding > 0 && { label:"Plan supplier payments", detail:`${currencyShort(payableOutstanding)} in unpaid bills`, target:"contracts", tone:"warning" },
+    receivableOutstanding > 0 && { label:"Follow up customer invoices", detail:`${currencyShort(receivableOutstanding)} still to collect`, target:"contracts", tone:"success" },
+    sales.length === 0 && { label:"Record the first sale", detail:"Start tracking revenue and profit", target:"sales", tone:"neutral" },
+    expenses.length === 0 && { label:"Record farm expenses", detail:"Capture costs for a clearer profit picture", target:"expenses", tone:"neutral" },
+    loans.length === 0 && { label:"Add active farm loans", detail:"Track repayments and outstanding balances", target:"loans", tone:"neutral" },
+  ].filter(Boolean).slice(0,4);
 
   if (totalAnimals===0 && feedItems.length===0) return (
     <EmptyState icon={Sprout} title="The ledger is empty"
@@ -782,6 +792,32 @@ function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, 
                 </li>
               ))}
             </ul>
+          )}
+        </div>
+
+        <div className="panel panel--wide">
+          <div className="panel__head">
+            <h3><CheckCircle2 size={16}/>Recommended next steps</h3>
+            <button className="link-btn" onClick={()=>onNavigate("livestock")}>Livestock overview <ChevronRight size={13}/></button>
+          </div>
+          {nextActions.length===0 ? (
+            <div className="success-callout">
+              <CheckCircle2 size={17}/>
+              <div>
+                <strong>Farm records look steady.</strong>
+                <p>Keep recording sales, expenses, feed movements, health events, and repayments as they happen.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="action-grid">
+              {nextActions.map(action=>(
+                <button key={action.label} className="action-card" onClick={()=>onNavigate(action.target)}>
+                  <span><Badge tone={action.tone}>{action.label}</Badge></span>
+                  <strong>{action.detail}</strong>
+                  <ChevronRight size={15}/>
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -1764,11 +1800,20 @@ function StatementPage({ animals, sales, expenses, loans, invoices }) {
 
   return (
     <div className="page">
-      <div className="toolbar">
-        <select value={year} onChange={e=>setYear(Number(e.target.value))}>{availableYears.map(y=><option key={y} value={y}>{y}</option>)}</select>
-        <select value={startMonth} onChange={e=>setStartMonth(Number(e.target.value))}>{MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select>
-        <select value={endMonth} onChange={e=>setEndMonth(Number(e.target.value))}>{MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select>
-        <span className="muted small">Showing {periodLabel}</span>
+      <div className="statement-hero">
+        <div>
+          <span className="statement-hero__eyebrow">Statement period</span>
+          <h2>{periodLabel}</h2>
+          <p>Prepared from livestock value, operating records, invoices, and loan balances currently in the farm ledger.</p>
+        </div>
+        <button className="btn btn--ghost" onClick={()=>window.print()}><Printer size={15}/>Print</button>
+      </div>
+
+      <div className="toolbar no-print">
+        <select aria-label="Statement year" value={year} onChange={e=>setYear(Number(e.target.value))}>{availableYears.map(y=><option key={y} value={y}>{y}</option>)}</select>
+        <select aria-label="Statement start month" value={startMonth} onChange={e=>setStartMonth(Number(e.target.value))}>{MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select>
+        <select aria-label="Statement end month" value={endMonth} onChange={e=>setEndMonth(Number(e.target.value))}>{MONTH_OPTIONS.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select>
+        <span className="muted small">Change the year or month range to refresh the statement.</span>
       </div>
 
       <div className="stat-row fin-stats">
@@ -2639,6 +2684,20 @@ const CSS = `
 .list-rows { list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px; }
 .list-rows li { display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;padding-bottom:9px;border-bottom:1px solid var(--line); }
 .list-rows li:last-child { border-bottom:none;padding-bottom:0; }
+.action-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+.action-card { position:relative;text-align:left;border:1px solid var(--line);background:var(--cream);border-radius:10px;padding:12px 34px 12px 12px;display:flex;flex-direction:column;gap:8px;cursor:pointer;color:var(--ink);font-family:'Inter',sans-serif; }
+.action-card:hover { background:#F3EDDD;border-color:#D8C9A7; }
+.action-card strong { font-size:12.5px;line-height:1.35;font-weight:600; }
+.action-card svg { position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--muted); }
+.success-callout { display:flex;align-items:flex-start;gap:10px;background:#E4ECE2;border:1px solid #CFDDCB;border-radius:10px;padding:13px 14px;color:var(--green-soft); }
+.success-callout p { margin:3px 0 0;color:var(--muted);font-size:12.5px;line-height:1.45; }
+
+/* Statement */
+.statement-hero { display:flex;justify-content:space-between;align-items:flex-start;gap:18px;background:var(--green);color:#EFE8D6;border-radius:12px;padding:18px 20px; }
+.statement-hero h2 { font-family:'Zilla Slab',serif;font-size:25px;line-height:1.05;margin:3px 0 6px; }
+.statement-hero p { max-width:720px;margin:0;color:#CAD4C5;font-size:13px;line-height:1.5; }
+.statement-hero__eyebrow { display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#D9A441;font-weight:800; }
+.statement-hero .btn { background:#EFE8D6;color:var(--green);border-color:transparent;flex-shrink:0; }
 
 /* Tables */
 .toolbar { display:flex;align-items:center;gap:10px;flex-wrap:wrap; }
@@ -2654,9 +2713,11 @@ const CSS = `
 .invoice-item-row { display:grid;grid-template-columns:minmax(180px,1.7fr) minmax(72px,.55fr) minmax(70px,.5fr) minmax(100px,.7fr) minmax(88px,.6fr) 34px;gap:8px;align-items:center;margin-top:8px; }
 .invoice-item-row input { width:100%;border:1px solid var(--line);border-radius:7px;padding:7px 8px;font:13px 'Inter',sans-serif;background:#fff;color:var(--ink); }
 .invoice-total { border-top:1px solid var(--line);margin-top:10px;padding-top:10px; }
-.table-wrap { background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:auto;-webkit-overflow-scrolling:touch; }
+.table-wrap { background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:auto;-webkit-overflow-scrolling:touch;box-shadow:inset 0 -1px 0 rgba(70,60,40,.03); }
+.table-wrap table { min-width:720px; }
 table { width:100%;border-collapse:collapse;font-size:13px; }
 th { text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap; }
+.table-wrap th { position:sticky;top:0;z-index:1;background:var(--paper); }
 td { padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle; }
 tr:last-child td { border-bottom:none; }
 tr.clickable { cursor:pointer; }
@@ -2793,6 +2854,7 @@ tr.clickable:hover { background:#F3EDDD; }
   .content { padding:16px 16px 40px; }
   .stat-row { grid-template-columns:1fr 1fr; }
   .dash-grid { grid-template-columns:1fr; }
+  .action-grid { grid-template-columns:1fr; }
   .profile-grid { grid-template-columns:1fr; }
   .panel--wide { grid-column:span 1; }
   .fin-stats { grid-template-columns:1fr 1fr; }
@@ -2809,6 +2871,8 @@ tr.clickable:hover { background:#F3EDDD; }
   .btn,.btn--tiny { min-height:36px; }
   .icon-btn { padding:8px; }
   .composition { flex-direction:column;align-items:flex-start; }
+  .statement-hero { flex-direction:column;align-items:stretch; }
+  .statement-hero .btn { justify-content:center; }
 }
 
 @media (max-width:480px) {
@@ -2824,5 +2888,18 @@ tr.clickable:hover { background:#F3EDDD; }
   .overview-grid { grid-template-columns:1fr; }
   .drawer__tabs { overflow-x:auto;-webkit-overflow-scrolling:touch; }
   .fin-month-strip__kpis { gap:12px; }
+}
+
+@media print {
+  .sidebar,.topbar,.no-print,.link-btn,.btn,.icon-btn,.form-error { display:none!important; }
+  .farm-app,.app-shell,.main,.content,.page { display:block;background:#fff;color:#111;padding:0;margin:0; }
+  .content { padding:0!important; }
+  .statement-hero { background:#fff;color:#111;border:1px solid #ccc;border-radius:0;margin-bottom:14px; }
+  .statement-hero p,.statement-hero__eyebrow,.muted { color:#444!important; }
+  .stat-row,.dash-grid { break-inside:avoid;page-break-inside:avoid; }
+  .panel,.stat-card,.table-wrap { border-color:#ccc;box-shadow:none;break-inside:avoid;page-break-inside:avoid; }
+  .table-wrap { overflow:visible; }
+  .table-wrap table { min-width:0; }
+  th { color:#333; }
 }
 `;
