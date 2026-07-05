@@ -28,6 +28,8 @@ const CONTRACT_STATUSES = ["Draft","Active","Paused","Ended"];
 const BILLING_CYCLES = ["On delivery","Weekly","Monthly","Seasonal","Other"];
 const INVOICE_DIRECTIONS = ["Payable","Receivable"];
 const INVOICE_STATUSES = ["Draft","Issued","Part paid","Paid","Overdue","Cancelled"];
+const LOAN_STATUSES = ["Active","Paid","Defaulted","Written off"];
+const LOAN_PAYMENT_FREQUENCIES = ["Weekly","Monthly","Quarterly","Seasonal","Flexible"];
 const PIE_COLORS     = ["#A23B2E","#D9A441","#3F5D45","#8A7B62","#6C4F3D","#C97B53","#5B7A8C"];
 const BAR_REVENUE    = "#3F5D45";
 const BAR_EXPENSE    = "#A23B2E";
@@ -40,6 +42,7 @@ const PAGE_TITLES = {
   feed:         "Feed Inventory",
   finances:     "Finances",
   contracts:    "Contracts & Invoices",
+  loans:        "Loans & Payments",
   sales:        "Sales & Revenue",
   expenses:     "Expenses",
   users:        "User Management",
@@ -128,6 +131,13 @@ function invoiceTone(status) {
   if (status === "Paid") return "success";
   if (status === "Overdue" || status === "Cancelled") return "danger";
   if (status === "Part paid" || status === "Issued") return "warning";
+  return "neutral";
+}
+
+function loanTone(status) {
+  if (status === "Paid") return "success";
+  if (status === "Defaulted" || status === "Written off") return "danger";
+  if (status === "Active") return "warning";
   return "neutral";
 }
 
@@ -679,7 +689,7 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
 }
 
 // ─── Pages ────────────────────────────────────────────────────────────────────
-function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, feedItems, sales, expenses, onNavigate }) {
+function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, feedItems, sales, expenses, loans, onNavigate }) {
   const total     = animals.length;
   const healthy   = animals.filter(a=>a.status==="Healthy").length;
   const sick      = animals.filter(a=>a.status==="Sick").length;
@@ -690,6 +700,7 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
 
   const totalRevenue  = (sales||[]).reduce((s,x)=>s+x.amount,0);
   const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0);
+  const outstandingDebt = (loans||[]).reduce((s,x)=>s+x.outstandingBalance,0);
   const netProfit     = totalRevenue - totalExpenses;
   const thisMonthKey  = monthKey(todayStr());
   const monthRev      = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
@@ -765,6 +776,8 @@ function DashboardPage({ animals, vaccinations, growthRecords, healthEvents, fee
         <div className="fin-dash-strip__kpis">
           <div><span className="muted small">Total revenue</span><strong className="trend-up mono">{currency(totalRevenue)}</strong></div>
           <div><span className="muted small">Total expenses</span><strong className="trend-down mono">{currency(totalExpenses)}</strong></div>
+          <div className="fin-dash-strip__divider"/>
+          <div><span className="muted small">Loan balance</span><strong className="trend-down mono">{currency(outstandingDebt)}</strong></div>
           <div className="fin-dash-strip__divider"/>
           <div><span className="muted small">Net profit / loss</span><strong className={`mono ${netProfit>=0?"trend-up":"trend-down"}`}>{netProfit>=0?"+":"-"}{currency(Math.abs(netProfit))}</strong></div>
           <div><span className="muted small">This month</span><strong className={`mono ${(monthRev-monthExp)>=0?"trend-up":"trend-down"}`}>{(monthRev-monthExp)>=0?"+":"-"}{currency(Math.abs(monthRev-monthExp))}</strong></div>
@@ -1519,16 +1532,101 @@ function InvoiceForm({ partners, contracts, onSubmit, onClose }) {
     </form>
   );
 }
-function FinancesPage({ sales, expenses, onNavigate }) {
+
+function LoanForm({ onSubmit, onClose }) {
+  const [form, setForm] = useState({
+    lender:"", purpose:"", principalAmount:"", interestRate:"0",
+    issueDate:todayStr(), dueDate:"", paymentFrequency:"Monthly",
+    status:"Active", collateral:"", notes:"",
+  });
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.lender.trim() || !form.purpose.trim() || !form.principalAmount) return;
+    onSubmit({
+      ...form,
+      principalAmount: parseFloat(form.principalAmount) || 0,
+      interestRate: parseFloat(form.interestRate) || 0,
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="form-grid">
+        <label>Lender *<input value={form.lender} onChange={set("lender")} placeholder="e.g. Agri Credit SACCO" required/></label>
+        <label>Status<select value={form.status} onChange={set("status")}>{LOAN_STATUSES.map(s=><option key={s}>{s}</option>)}</select></label>
+        <label className="span-2">Purpose *<input value={form.purpose} onChange={set("purpose")} placeholder="e.g. Dairy shed expansion" required/></label>
+        <label>Principal amount *<input type="number" min="0" step="0.01" value={form.principalAmount} onChange={set("principalAmount")} required/></label>
+        <label>Interest rate (%)<input type="number" min="0" step="0.01" value={form.interestRate} onChange={set("interestRate")}/></label>
+        <label>Issue date<input type="date" value={form.issueDate} onChange={set("issueDate")} required/></label>
+        <label>Due date<input type="date" value={form.dueDate} onChange={set("dueDate")}/></label>
+        <label>Payment frequency<select value={form.paymentFrequency} onChange={set("paymentFrequency")}>{LOAN_PAYMENT_FREQUENCIES.map(f=><option key={f}>{f}</option>)}</select></label>
+        <label>Collateral<input value={form.collateral} onChange={set("collateral")} placeholder="optional"/></label>
+        <label className="span-2">Notes<textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="Loan officer, terms, grace period..."/></label>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary"><Banknote size={15}/>Save loan</button>
+      </div>
+    </form>
+  );
+}
+
+function LoanPaymentForm({ loans, selectedLoanId, onSubmit, onClose }) {
+  const payableLoans = loans.filter(l=>l.outstandingBalance > 0 && l.status !== "Written off");
+  const initialLoanId = selectedLoanId || payableLoans[0]?.id || loans[0]?.id || "";
+  const [form, setForm] = useState({
+    loanId: initialLoanId, date:todayStr(), amount:"", method:"", reference:"", notes:"",
+  });
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  const selected = loans.find(l=>String(l.id)===String(form.loanId));
+
+  if (!loans.length) return (
+    <div><p className="confirm-body">Add a loan before recording a loan payment.</p>
+      <div className="form-actions"><button className="btn btn--ghost" onClick={onClose}>Close</button></div></div>
+  );
+
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.loanId || !form.amount) return;
+    onSubmit({
+      ...form,
+      amount: parseFloat(form.amount) || 0,
+    });
+  }
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <div className="form-grid">
+        <label className="span-2">Loan *<select value={form.loanId} onChange={set("loanId")}>{loans.map(l=><option key={l.id} value={l.id}>{l.lender} - {l.purpose}</option>)}</select></label>
+        <label>Date<input type="date" value={form.date} onChange={set("date")} max={todayStr()} required/></label>
+        <label>Amount paid *<input type="number" min="0" step="0.01" value={form.amount} onChange={set("amount")} placeholder={selected?`Outstanding ${currency(selected.outstandingBalance)}`:""} required/></label>
+        <label>Method<input value={form.method} onChange={set("method")} placeholder="e.g. M-Pesa, bank"/></label>
+        <label>Reference<input value={form.reference} onChange={set("reference")} placeholder="Receipt or transaction ID"/></label>
+        <label className="span-2">Notes<textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="Installment notes..."/></label>
+      </div>
+      {selected && <p className="muted small profile-note">Outstanding before this payment: <span className="mono">{currency(selected.outstandingBalance)}</span></p>}
+      <div className="form-actions">
+        <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary"><Receipt size={15}/>Record payment</button>
+      </div>
+    </form>
+  );
+}
+function FinancesPage({ sales, expenses, loans, onNavigate }) {
   const totalRevenue    = sales.reduce((s,x)=>s+x.amount,0);
   const totalExpenses   = expenses.reduce((s,x)=>s+x.amount,0);
   const netProfit       = totalRevenue - totalExpenses;
   const margin          = totalRevenue>0 ? ((netProfit/totalRevenue)*100).toFixed(1) : null;
+  const outstandingDebt = loans.reduce((s,x)=>s+x.outstandingBalance,0);
+  const loanPayments    = loans.flatMap(loan=>(loan.payments||[]).map(payment=>({...payment,loan})));
 
   const now = todayStr();
   const thisMonthKey = monthKey(now);
   const monthRevenue  = sales.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthExpenses = expenses.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthLoanPayments = loanPayments.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthProfit   = monthRevenue - monthExpenses;
 
   // Monthly bar chart (last 8 months)
@@ -1557,9 +1655,10 @@ function FinancesPage({ sales, expenses, onNavigate }) {
   const recentTx = [
     ...sales.map(x=>({...x,_kind:"sale"})),
     ...expenses.map(x=>({...x,_kind:"expense"})),
+    ...loanPayments.map(x=>({...x,_kind:"loan_payment",description:`Loan payment - ${x.loan.lender}`})),
   ].sort((a,b)=>a.date<b.date?1:-1).slice(0,10);
 
-  const isEmpty = sales.length===0 && expenses.length===0;
+  const isEmpty = sales.length===0 && expenses.length===0 && loans.length===0;
 
   return (
     <div className="page">
@@ -1567,8 +1666,8 @@ function FinancesPage({ sales, expenses, onNavigate }) {
       <div className="stat-row fin-stats">
         <StatCard icon={Banknote}     label="Total revenue"     value={currencyShort(totalRevenue)}   sub={`${sales.length} sale records`}       tone="green"/>
         <StatCard icon={Receipt}      label="Total expenses"    value={currencyShort(totalExpenses)}  sub={`${expenses.length} expense records`}  tone="rust"/>
-        <StatCard icon={netProfit>=0?Wallet:TrendingDown} label="Net profit / loss" value={currencyShort(Math.abs(netProfit))} sub={netProfit>=0?"in the black":"running at a loss"} tone={netProfit>=0?"green":"rust"}/>
-        <StatCard icon={BadgeDollarSign} label="Profit margin"  value={margin!==null?`${margin}%`:"—"} sub="revenue minus costs" tone={netProfit>=0?"gold":"ink"}/>
+        <StatCard icon={netProfit>=0?Wallet:TrendingDown} label="Net profit / loss" value={currencyShort(Math.abs(netProfit))} sub={margin!==null?`${margin}% margin`:"revenue minus costs"} tone={netProfit>=0?"green":"rust"}/>
+        <StatCard icon={Wallet} label="Loan balance" value={currencyShort(outstandingDebt)} sub={`${loans.length} loan record${loans.length===1?"":"s"}`} tone={outstandingDebt>0?"gold":"ink"}/>
       </div>
 
       {/* This month KPIs */}
@@ -1577,6 +1676,7 @@ function FinancesPage({ sales, expenses, onNavigate }) {
         <div className="fin-month-strip__kpis">
           <div><span className="muted small">Revenue</span><strong className="trend-up mono">{currency(monthRevenue)}</strong></div>
           <div><span className="muted small">Expenses</span><strong className="trend-down mono">{currency(monthExpenses)}</strong></div>
+          <div><span className="muted small">Loan payments</span><strong className="trend-down mono">{currency(monthLoanPayments)}</strong></div>
           <div><span className="muted small">Profit / Loss</span><strong className={`mono ${monthProfit>=0?"trend-up":"trend-down"}`}>{monthProfit>=0?"+":"-"}{currency(Math.abs(monthProfit))}</strong></div>
         </div>
       </div>
@@ -1659,6 +1759,7 @@ function FinancesPage({ sales, expenses, onNavigate }) {
             <div className="panel__head">
               <h3>Recent transactions</h3>
               <div style={{display:"flex",gap:8}}>
+                <button className="link-btn" onClick={()=>onNavigate("loans")}>Loans <ChevronRight size={13}/></button>
                 <button className="link-btn" onClick={()=>onNavigate("sales")}>Sales <ChevronRight size={13}/></button>
                 <button className="link-btn" onClick={()=>onNavigate("expenses")}>Expenses <ChevronRight size={13}/></button>
               </div>
@@ -1667,8 +1768,8 @@ function FinancesPage({ sales, expenses, onNavigate }) {
               <thead><tr><th>Type</th><th>Description</th><th>Date</th><th>Amount</th></tr></thead>
               <tbody>
                 {recentTx.map(tx=>(
-                  <tr key={tx.id}>
-                    <td><Badge tone={tx._kind==="sale"?"success":"danger"}>{tx._kind==="sale"?"Revenue":"Expense"}</Badge></td>
+                  <tr key={`${tx._kind}-${tx.id}`}>
+                    <td><Badge tone={tx._kind==="sale"?"success":"danger"}>{tx._kind==="sale"?"Revenue":tx._kind==="loan_payment"?"Loan payment":"Expense"}</Badge></td>
                     <td>{tx.description}</td>
                     <td className="mono">{formatDate(tx.date)}</td>
                     <td className={`mono ${tx._kind==="sale"?"trend-up":"trend-down"}`}>
@@ -1765,6 +1866,104 @@ function ContractsPage({ partners, contracts, invoices, onAddPartner, onAddContr
         </table></div>
       ))}
       {confirm&&<ConfirmDialog title="Delete record" body="This permanently removes the selected record." onCancel={()=>setConfirm(null)} onConfirm={confirmDelete}/>} 
+    </div>
+  );
+}
+
+function LoansPage({ loans, onAddLoan, onAddPayment, onDeleteLoan, onDeletePayment }) {
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [confirm, setConfirm] = useState(null);
+  const totalPrincipal = loans.reduce((s,l)=>s+l.principalAmount,0);
+  const totalDue = loans.reduce((s,l)=>s+l.totalDue,0);
+  const totalPaid = loans.reduce((s,l)=>s+l.totalPaid,0);
+  const outstanding = loans.reduce((s,l)=>s+l.outstandingBalance,0);
+
+  const rows = loans
+    .filter(l=>{
+      const q = query.toLowerCase();
+      const matchesQuery = !q || l.lender.toLowerCase().includes(q) || l.purpose.toLowerCase().includes(q) || (l.collateral||"").toLowerCase().includes(q);
+      return matchesQuery && (statusFilter==="All" || l.status===statusFilter);
+    })
+    .sort((a,b)=>(a.dueDate||"9999-99-99")>(b.dueDate||"9999-99-99")?1:-1);
+
+  const recentPayments = loans
+    .flatMap(loan=>(loan.payments||[]).map(payment=>({...payment,loan})))
+    .sort((a,b)=>a.date<b.date?1:-1)
+    .slice(0,8);
+
+  function confirmDelete() {
+    if (confirm?.type === "loan") onDeleteLoan(confirm.id);
+    if (confirm?.type === "payment") onDeletePayment(confirm.id);
+    setConfirm(null);
+  }
+
+  return (
+    <div className="page">
+      <div className="stat-row fin-stats">
+        <StatCard icon={Banknote} label="Loan principal" value={currencyShort(totalPrincipal)} sub={`${loans.length} loan record${loans.length===1?"":"s"}`} tone="ink"/>
+        <StatCard icon={BadgeDollarSign} label="Total due" value={currencyShort(totalDue)} sub="principal plus interest" tone="gold"/>
+        <StatCard icon={Receipt} label="Paid back" value={currencyShort(totalPaid)} sub="recorded repayments" tone="green"/>
+        <StatCard icon={Wallet} label="Outstanding" value={currencyShort(outstanding)} sub="remaining balance" tone={outstanding>0?"rust":"green"}/>
+      </div>
+
+      <div className="toolbar">
+        <div className="search-box"><Search size={15}/><input placeholder="Lender, purpose, collateral..." value={query} onChange={e=>setQuery(e.target.value)}/></div>
+        <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+          <option>All</option>{LOAN_STATUSES.map(s=><option key={s}>{s}</option>)}
+        </select>
+        <div className="spacer"/>
+        <button className="btn btn--ghost" onClick={()=>onAddPayment()}><Receipt size={15}/>Payment</button>
+        <button className="btn btn--primary" onClick={onAddLoan}><Plus size={15}/>Loan</button>
+      </div>
+
+      {loans.length===0 ? (
+        <EmptyState icon={Banknote} title="No loans recorded" body="Add farm loans and track each repayment against the outstanding balance." actionLabel="Add loan" onAction={onAddLoan}/>
+      ) : rows.length===0 ? <p className="muted">No loans match that filter.</p> : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Lender</th><th>Purpose</th><th>Issued</th><th>Due</th><th>Principal</th><th>Interest</th><th>Paid</th><th>Outstanding</th><th>Status</th><th/></tr></thead>
+            <tbody>{rows.map(l=>(
+              <tr key={l.id}>
+                <td><strong>{l.lender}</strong><div className="muted small">{l.paymentFrequency}</div></td>
+                <td>{l.purpose}<div className="muted small">{l.collateral||"No collateral recorded"}</div></td>
+                <td className="mono">{formatDate(l.issueDate)}</td>
+                <td className="mono">{formatDate(l.dueDate)}</td>
+                <td className="mono">{currency(l.principalAmount)}</td>
+                <td className="mono">{l.interestRate}%</td>
+                <td className="mono trend-up">{currency(l.totalPaid)}</td>
+                <td className={`mono ${l.outstandingBalance>0?"trend-down":"trend-up"}`}>{currency(l.outstandingBalance)}</td>
+                <td><Badge tone={loanTone(l.status)}>{l.status}</Badge></td>
+                <td className="actions-cell">
+                  <button className="btn btn--tiny" disabled={l.outstandingBalance<=0} onClick={()=>onAddPayment(l.id)}><Receipt size={12}/>Pay</button>
+                  <button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"loan",id:l.id})} aria-label="Delete loan"><Trash2 size={15}/></button>
+                </td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+
+      <div className="panel">
+        <div className="panel__head"><h3><Receipt size={16}/>Recent loan payments</h3></div>
+        {recentPayments.length===0 ? <p className="muted small">No loan payments recorded yet.</p> : (
+          <table>
+            <thead><tr><th>Loan</th><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th/></tr></thead>
+            <tbody>{recentPayments.map(p=>(
+              <tr key={p.id}>
+                <td>{p.loan.lender}<div className="muted small">{p.loan.purpose}</div></td>
+                <td className="mono">{formatDate(p.date)}</td>
+                <td className="mono trend-down">{currency(p.amount)}</td>
+                <td>{p.method||"-"}</td>
+                <td className="mono">{p.reference||"-"}</td>
+                <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"payment",id:p.id})} aria-label="Delete payment"><Trash2 size={15}/></button></td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </div>
+
+      {confirm&&<ConfirmDialog title="Delete loan record" body={confirm.type==="loan"?"This removes the loan and all payments recorded against it.":"This removes the selected loan payment."} onCancel={()=>setConfirm(null)} onConfirm={confirmDelete}/>}
     </div>
   );
 }
@@ -1884,8 +2083,9 @@ const NAV_SECTIONS = [
   ]},
   { label:"Finance", items:[
     {key:"finances",  label:"Overview",      icon:BadgeDollarSign},
-    {key:"contracts", label:"Contracts & Invoices", icon:FileText},
-    {key:"sales",     label:"Sales & Revenue", icon:Banknote},
+    {key:"contracts", label:"Contracts", icon:FileText},
+    {key:"loans",     label:"Loans", icon:Wallet},
+    {key:"sales",     label:"Sales", icon:Banknote},
     {key:"expenses",  label:"Expenses",      icon:Receipt},
   ]},
   { label:"Administration", items:[
@@ -1909,6 +2109,7 @@ export default function FarmApp() {
   const [partners, setPartners]         = useState([]);
   const [contracts, setContracts]       = useState([]);
   const [invoices, setInvoices]         = useState([]);
+  const [loans, setLoans]               = useState([]);
   const [users, setUsers]               = useState([]);
   const [currentUser, setCurrentUser]   = useState(null);
   const [farm, setFarm]                 = useState(null);
@@ -1926,6 +2127,8 @@ export default function FarmApp() {
   const [showPartnerForm, setShowPartnerForm] = useState(false);
   const [showContractForm, setShowContractForm] = useState(false);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [showLoanForm, setShowLoanForm] = useState(false);
+  const [loanPaymentLoanId, setLoanPaymentLoanId] = useState(null);
   const [showAddUser, setShowAddUser]     = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [defaultAnimal, setDefaultAnimal] = useState(null);
@@ -1955,7 +2158,7 @@ export default function FarmApp() {
     setAnimals(data.animals); setVaccinations(data.vaccinations); setGrowthRecords(data.growthRecords);
     setHealthEvents(data.healthEvents); setFeedItems(data.feedItems);
     setSales(data.sales); setExpenses(data.expenses); setPartners(data.partners);
-    setContracts(data.contracts); setInvoices(data.invoices); setUsers(data.users);
+    setContracts(data.contracts); setInvoices(data.invoices); setLoans(data.loans); setUsers(data.users);
   }
 
   async function refreshBackendData() {
@@ -2007,6 +2210,10 @@ export default function FarmApp() {
   const deleteContract=id=>runBackend(async()=>{ await api.deleteContract(id); await refreshBackendData(); });
   const addInvoice=data=>runBackend(async()=>{ await api.createInvoice(data); await refreshBackendData(); setShowInvoiceForm(false); });
   const deleteInvoice=id=>runBackend(async()=>{ await api.deleteInvoice(id); await refreshBackendData(); });
+  const addLoan=data=>runBackend(async()=>{ await api.createLoan(data); await refreshBackendData(); setShowLoanForm(false); });
+  const deleteLoan=id=>runBackend(async()=>{ await api.deleteLoan(id); await refreshBackendData(); });
+  const addLoanPayment=data=>runBackend(async()=>{ await api.createLoanPayment(data); await refreshBackendData(); setLoanPaymentLoanId(null); });
+  const deleteLoanPayment=id=>runBackend(async()=>{ await api.deleteLoanPayment(id); await refreshBackendData(); });
   const addUser=data=>runBackend(async()=>{ await api.createUser(data); await refreshBackendData(); setShowAddUser(false); });
   const editUser=(id,update)=>runBackend(async()=>{ await api.updateUser(id,update); await refreshBackendData(); setEditingUserId(null); });
   const toggleUser=id=>runBackend(async()=>{ await api.toggleUser(id); await refreshBackendData(); });
@@ -2073,13 +2280,14 @@ export default function FarmApp() {
             </header>
             <div className="content">
               {apiError && <div className="form-error" style={{marginBottom:16}}>{apiError}</div>}
-              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} onNavigate={setActiveTab}/>}
+              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
               {activeTab==="animals"      && <AnimalsPage animals={animals} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
               {activeTab==="vaccinations" && <VaccinationsPage animals={animals} vaccinations={vaccinations} onAdd={()=>{setDefaultAnimal(null);setShowVaxForm(true);}} onDelete={deleteVaccination}/>}
               {activeTab==="growth"       && <GrowthPage animals={animals} growthRecords={growthRecords} onAdd={()=>{setDefaultAnimal(null);setShowGrowthForm(true);}} onDelete={deleteGrowth}/>}
               {activeTab==="feed"         && <FeedPage feedItems={feedItems} onAdd={()=>setShowFeedForm(true)} onAdjust={adjustFeed} onDelete={deleteFeed}/>}
-              {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} onNavigate={setActiveTab}/>}
+              {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
               {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
+              {activeTab==="loans"        && <LoansPage loans={loans} onAddLoan={()=>setShowLoanForm(true)} onAddPayment={id=>setLoanPaymentLoanId(id || "")} onDeleteLoan={deleteLoan} onDeletePayment={deleteLoanPayment}/>}
               {activeTab==="sales"        && <SalesPage sales={sales} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
               {activeTab==="expenses"     && <ExpensesPage expenses={expenses} onAdd={()=>setShowExpenseForm(true)} onDelete={deleteExpense}/>}
               {activeTab==="profile"      && <ProfilePage currentUser={currentUser} farm={farm || currentUser.farm} onSaveFarm={saveFarm}/>}
@@ -2101,6 +2309,8 @@ export default function FarmApp() {
       {showPartnerForm   && <Modal title="Add trading partner" onClose={()=>setShowPartnerForm(false)}><PartnerForm onSubmit={addPartner} onClose={()=>setShowPartnerForm(false)}/></Modal>}
       {showContractForm  && <Modal title="Add contract" onClose={()=>setShowContractForm(false)} wide><ContractForm partners={partners} onSubmit={addContract} onClose={()=>setShowContractForm(false)}/></Modal>}
       {showInvoiceForm   && <Modal title="Add invoice" onClose={()=>setShowInvoiceForm(false)} wide><InvoiceForm partners={partners} contracts={contracts} onSubmit={addInvoice} onClose={()=>setShowInvoiceForm(false)}/></Modal>}
+      {showLoanForm      && <Modal title="Add loan" onClose={()=>setShowLoanForm(false)} wide><LoanForm onSubmit={addLoan} onClose={()=>setShowLoanForm(false)}/></Modal>}
+      {loanPaymentLoanId !== null && <Modal title="Record loan payment" onClose={()=>setLoanPaymentLoanId(null)}><LoanPaymentForm loans={loans} selectedLoanId={loanPaymentLoanId} onSubmit={addLoanPayment} onClose={()=>setLoanPaymentLoanId(null)}/></Modal>}
       {showAddUser       && <Modal title="Add user" onClose={()=>setShowAddUser(false)}><AddUserForm existingUsers={users} onSubmit={addUser} onClose={()=>setShowAddUser(false)}/></Modal>}
       {editingUser       && <Modal title="Edit user" onClose={()=>setEditingUserId(null)}><EditUserForm user={editingUser} existingUsers={users} onSubmit={u=>editUser(editingUser.id,u)} onClose={()=>setEditingUserId(null)}/></Modal>}
       {openAnimal        && <AnimalDrawer animal={openAnimal} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} onClose={()=>setOpenAnimalId(null)} onRecordVax={openRecordVax} onLogGrowth={openLogGrowth} onLogHealth={openLogHealth} onEditAnimal={openEditAnimal}/>}

@@ -115,6 +115,25 @@ function normalizeInvoice(invoice) {
   };
 }
 
+function normalizeLoanPayment(payment) {
+  return {
+    ...payment,
+    amount: toNumber(payment.amount) || 0,
+  };
+}
+
+function normalizeLoan(loan) {
+  return {
+    ...loan,
+    principalAmount: toNumber(loan.principalAmount) || 0,
+    interestRate: toNumber(loan.interestRate) || 0,
+    totalDue: toNumber(loan.totalDue) || 0,
+    totalPaid: toNumber(loan.totalPaid) || 0,
+    outstandingBalance: toNumber(loan.outstandingBalance) || 0,
+    payments: (loan.payments || []).map(normalizeLoanPayment),
+  };
+}
+
 function nullIfBlank(value) {
   return value === "" ? null : value;
 }
@@ -149,7 +168,7 @@ export const api = {
   },
 
   async loadAll(currentUser) {
-    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, partners, contracts, invoices, users] = await Promise.all([
+    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, partners, contracts, invoices, loans, users] = await Promise.all([
       request("/farm/"),
       request("/animals/"),
       request("/vaccinations/"),
@@ -161,6 +180,7 @@ export const api = {
       request("/partners/"),
       request("/contracts/"),
       request("/invoices/"),
+      request("/loans/"),
       currentUser?.role === "Admin" ? request("/users/") : Promise.resolve([]),
     ]);
 
@@ -178,6 +198,7 @@ export const api = {
       partners,
       contracts: contracts.map(normalizeContract),
       invoices: invoices.map(normalizeInvoice),
+      loans: loans.map(normalizeLoan),
       users: normalizedUsers,
     };
   },
@@ -318,6 +339,31 @@ export const api = {
 
   deleteInvoice(id) {
     return request(`/invoices/${id}/`, { method: "DELETE" });
+  },
+
+  createLoan(data) {
+    return request("/loans/", {
+      method: "POST",
+      body: JSON.stringify({
+        ...data,
+        dueDate: nullIfBlank(data.dueDate),
+      }),
+    }).then(normalizeLoan);
+  },
+
+  deleteLoan(id) {
+    return request(`/loans/${id}/`, { method: "DELETE" });
+  },
+
+  createLoanPayment(data) {
+    return request("/loan-payments/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }).then(normalizeLoanPayment);
+  },
+
+  deleteLoanPayment(id) {
+    return request(`/loan-payments/${id}/`, { method: "DELETE" });
   },
 
   createUser(data) {
