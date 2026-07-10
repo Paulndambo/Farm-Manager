@@ -8,10 +8,14 @@ import {
   HeartPulse,
   Leaf,
   Lock,
+  Mail,
   Menu,
   PawPrint,
+  MessageCircle,
+  Phone,
   Receipt,
   Scale,
+  Send,
   ShieldCheck,
   Smartphone,
   Syringe,
@@ -20,6 +24,7 @@ import {
   Wheat,
   X,
 } from "lucide-react";
+import { api } from "./api";
 import "./LandingPage.css";
 
 const navLinks = [
@@ -27,8 +32,14 @@ const navLinks = [
   ["How it works", "#how-it-works"],
   ["Livestock", "#livestock"],
   ["Finances", "#finances"],
+  ["Pricing", "#pricing"],
+  ["Contact", "#contact"],
   ["Testimonials", "#testimonials"],
 ];
+
+const CONTACT_PHONE_DISPLAY = "+254 745 491 093";
+const CONTACT_PHONE_TEL = "+254745491093";
+const CONTACT_WHATSAPP = "254745491093";
 
 const counties = ["Kiambu County", "Nakuru", "Nyandarua", "Meru", "Laikipia", "Narok", "Bomet"];
 
@@ -90,6 +101,46 @@ const includedFeatures = [
   ["rust", Smartphone, "Works on any device", "Fully mobile-responsive. Use it in the field on your phone or at the desk on a laptop."],
   ["gold", Lock, "Farm-scoped access", "Owners create a farm workspace, then admins add users who only see that farm's data."],
   ["green", Cloud, "Data persists automatically", "Everything saves as you go. Your records are there every time you come back."],
+];
+
+const pricingPlans = [
+  {
+    name: "Free",
+    price: "KES 0",
+    cadence: "forever",
+    summary: "For farmers testing digital records.",
+    limit: "Up to 20 active animals",
+    features: ["1 farm", "1 user", "Basic dashboard", "Basic health, income, expense, and inventory records"],
+    cta: "Start free",
+  },
+  {
+    name: "Standard",
+    price: "KES 500",
+    cadence: "per month",
+    summary: "The mass-market plan for small livestock keepers.",
+    limit: "Up to 100 active animals",
+    features: ["2 users", "Complete animal records", "Vaccination and treatment reminders", "Inventory, income, expenses, and basic profit reports"],
+    cta: "Choose Standard",
+    featured: true,
+  },
+  {
+    name: "Business",
+    price: "KES 1,200",
+    cadence: "per month",
+    summary: "For established small and medium farms.",
+    limit: "Up to 500 active animals",
+    features: ["5 users", "Supplier and customer records", "Inventory alerts", "Performance, mortality, sales, and valuation reports"],
+    cta: "Choose Business",
+  },
+  {
+    name: "Commercial",
+    price: "From KES 2,500",
+    cadence: "per month",
+    summary: "For commercial farms and larger operations.",
+    limit: "Up to 2,000 active animals",
+    features: ["10 users", "Multiple farm branches", "Role-based permissions", "Detailed financial reports and priority support"],
+    cta: "Choose Commercial",
+  },
 ];
 
 const testimonials = [
@@ -157,7 +208,7 @@ function MockDashboard() {
 
       <div className="lp-mock-app">
         <div className="lp-mock-topbar">
-          <strong>Pasture Ledger</strong>
+          <strong>Farm Ledger</strong>
           <span>FA</span>
         </div>
         <div className="lp-mock-body">
@@ -329,6 +380,16 @@ function BarGroup({ title, rows }) {
 function LandingPage({ onEnterApp }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [contactForm, setContactForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    farmName: "",
+    preferredContact: "whatsapp",
+    message: "",
+  });
+  const [contactStatus, setContactStatus] = useState({ type: "", message: "" });
+  const [contactSubmitting, setContactSubmitting] = useState(false);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -362,6 +423,32 @@ function LandingPage({ onEnterApp }) {
   };
 
   const closeMenu = () => setMenuOpen(false);
+  const setContactField = key => event => {
+    setContactForm(form => ({ ...form, [key]: event.target.value }));
+    setContactStatus({ type: "", message: "" });
+  };
+
+  async function submitContact(event) {
+    event.preventDefault();
+    setContactSubmitting(true);
+    setContactStatus({ type: "", message: "" });
+    try {
+      await api.submitContactInquiry(contactForm);
+      setContactForm({
+        name: "",
+        email: "",
+        phone: "",
+        farmName: "",
+        preferredContact: "whatsapp",
+        message: "",
+      });
+      setContactStatus({ type: "success", message: "Thanks. Your message has been sent, and we will get back to you shortly." });
+    } catch (error) {
+      setContactStatus({ type: "error", message: error.message || "Could not send your message. Please call or WhatsApp us directly." });
+    } finally {
+      setContactSubmitting(false);
+    }
+  }
 
   return (
     <div className="landing-page">
@@ -369,7 +456,7 @@ function LandingPage({ onEnterApp }) {
         <div className="lp-nav__inner">
           <a className="lp-logo" href="#top" onClick={closeMenu}>
             <BrandMark />
-            <span>Pasture Ledger</span>
+            <span>Farm Ledger</span>
           </a>
           <ul className="lp-nav__links">
             {navLinks.map(([label, href]) => (
@@ -406,7 +493,7 @@ function LandingPage({ onEnterApp }) {
               <Tag tone="dark">Built for working farms</Tag>
               <h1>Run your farm with <em>total clarity</em></h1>
               <p>
-                Pasture Ledger brings your livestock records, health history, feed inventory, vaccinations, and farm finances
+                Farm Ledger brings your livestock records, health history, feed inventory, vaccinations, and farm finances
                 into one clean, simple platform accessible from the field or the office.
               </p>
               <div className="lp-hero__ctas">
@@ -438,7 +525,7 @@ function LandingPage({ onEnterApp }) {
             <div className="lp-section-header lp-fade-up">
               <Tag>Everything you need</Tag>
               <h2>One platform for every part of your farm</h2>
-              <p>From a single goat to a herd of hundreds, Pasture Ledger scales with you and keeps every record at your fingertips.</p>
+              <p>From a single goat to a herd of hundreds, Farm Ledger scales with you and keeps every record at your fingertips.</p>
             </div>
             <div className="lp-features-grid">
               {features.map(({ icon: Icon, tone, title, tag, text }) => (
@@ -458,7 +545,7 @@ function LandingPage({ onEnterApp }) {
             <div className="lp-section-header lp-fade-up">
               <Tag tone="dark">Simple by design</Tag>
               <h2>Up and running in minutes</h2>
-              <p>No training courses or IT team needed. If you can use a phone, you can use Pasture Ledger.</p>
+              <p>No training courses or IT team needed. If you can use a phone, you can use Farm Ledger.</p>
             </div>
             <div className="lp-steps">
               {[
@@ -501,7 +588,7 @@ function LandingPage({ onEnterApp }) {
             <div className="lp-deep-copy lp-fade-up">
               <Tag tone="gold">Farm finances</Tag>
               <h2>Know exactly where you stand every single day</h2>
-              <p>Pasture Ledger tracks every shilling in and out, from animal sales and produce revenue to feed, vet bills, labor, and equipment costs.</p>
+              <p>Farm Ledger tracks every shilling in and out, from animal sales and produce revenue to feed, vet bills, labor, and equipment costs.</p>
               <ul>
                 <li>Monthly revenue vs expenses bar chart for fast trend spotting</li>
                 <li>Auto-logs expenses when you add purchased animals or restock feed</li>
@@ -536,12 +623,84 @@ function LandingPage({ onEnterApp }) {
           </div>
         </section>
 
+        <section className="lp-pricing" id="pricing">
+          <div className="lp-container">
+            <div className="lp-section-header lp-fade-up">
+              <Tag tone="gold">Simple pricing</Tag>
+              <h2>Start free, then grow by farm size</h2>
+              <p>Predictable animal-band pricing keeps farmers from being punished for complete records. Annual plans include roughly two months free.</p>
+            </div>
+            <div className="lp-pricing-grid">
+              {pricingPlans.map(plan => (
+                <article className={`lp-pricing-card lp-fade-up${plan.featured ? " lp-pricing-card--featured" : ""}`} key={plan.name}>
+                  {plan.featured && <span className="lp-pricing-card__badge">Most popular</span>}
+                  <h3>{plan.name}</h3>
+                  <p>{plan.summary}</p>
+                  <div className="lp-price"><strong>{plan.price}</strong><span>{plan.cadence}</span></div>
+                  <div className="lp-plan-limit">{plan.limit}</div>
+                  <ul>
+                    {plan.features.map(feature => <li key={feature}><Check size={15}/>{feature}</li>)}
+                  </ul>
+                  <a className={`lp-btn ${plan.featured ? "lp-btn--primary" : "lp-btn--outline"}`} href="#app" onClick={enterApp}>{plan.cta}</a>
+                </article>
+              ))}
+            </div>
+            <div className="lp-pricing-note lp-fade-up">
+              <strong>Enterprise and cooperative packages</strong>
+              <span>Ranches, cooperatives, NGOs, and multi-farm businesses can request custom animals, users, support, onboarding, and organisation dashboards.</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="lp-contact" id="contact">
+          <div className="lp-container lp-contact__grid">
+            <div className="lp-contact__copy lp-fade-up">
+              <Tag>Contact us</Tag>
+              <h2>Talk to us about your farm</h2>
+              <p>Have a question, need help getting started, or want to talk through your farm setup? Send a message or reach us directly by phone or WhatsApp.</p>
+              <div className="lp-contact-methods">
+                <a href={`tel:${CONTACT_PHONE_TEL}`}>
+                  <Phone size={18}/>
+                  <span><strong>Call us</strong><small>{CONTACT_PHONE_DISPLAY}</small></span>
+                </a>
+                <a href={`https://wa.me/${CONTACT_WHATSAPP}`} target="_blank" rel="noreferrer">
+                  <MessageCircle size={18}/>
+                  <span><strong>WhatsApp</strong><small>{CONTACT_PHONE_DISPLAY}</small></span>
+                </a>
+              </div>
+            </div>
+            <form className="lp-contact-form lp-fade-up" onSubmit={submitContact}>
+              <div className="lp-contact-form__row">
+                <label>Name *<input value={contactForm.name} onChange={setContactField("name")} placeholder="Your name" required/></label>
+                <label>Farm name<input value={contactForm.farmName} onChange={setContactField("farmName")} placeholder="Optional"/></label>
+              </div>
+              <div className="lp-contact-form__row">
+                <label>Email<input type="email" value={contactForm.email} onChange={setContactField("email")} placeholder="you@example.com"/></label>
+                <label>Phone<input value={contactForm.phone} onChange={setContactField("phone")} placeholder="+254 700 000 000"/></label>
+              </div>
+              <label>Preferred contact
+                <select value={contactForm.preferredContact} onChange={setContactField("preferredContact")}>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="phone">Phone call</option>
+                  <option value="email">Email</option>
+                </select>
+              </label>
+              <label>Message *<textarea rows={4} value={contactForm.message} onChange={setContactField("message")} placeholder="Tell us what you need help with..." required/></label>
+              {contactStatus.message && <p className={`lp-contact-form__status lp-contact-form__status--${contactStatus.type}`}>{contactStatus.message}</p>}
+              <button className="lp-btn lp-btn--primary" type="submit" disabled={contactSubmitting}>
+                {contactSubmitting ? "Sending..." : "Send message"} <Send size={16}/>
+              </button>
+              <small><Mail size={14}/> Provide either email or phone so we can respond.</small>
+            </form>
+          </div>
+        </section>
+
         <section className="lp-testimonials" id="testimonials">
           <div className="lp-container">
             <div className="lp-section-header lp-fade-up">
               <Tag tone="gold">From the field</Tag>
               <h2>Farmers who've made the switch</h2>
-              <p>Real feedback from farm owners using Pasture Ledger to run their operations.</p>
+              <p>Real feedback from farm owners using Farm Ledger to run their operations.</p>
             </div>
             <div className="lp-testimonials__grid">
               {testimonials.map(testimonial => (
@@ -562,7 +721,7 @@ function LandingPage({ onEnterApp }) {
           <div className="lp-cta__inner lp-fade-up">
             <Tag tone="dark">Get started today</Tag>
             <h2>Your farm deserves better records</h2>
-            <p>Stop managing animals in spreadsheets and notebooks. Pasture Ledger gives you a complete picture of your herd and your finances in one place, on any device.</p>
+            <p>Stop managing animals in spreadsheets and notebooks. Farm Ledger gives you a complete picture of your herd and your finances in one place, on any device.</p>
             <div className="lp-cta__buttons">
               <a className="lp-btn lp-btn--primary lp-btn--large" href="#app" onClick={enterApp}>Create your account <ChevronRight size={18} /></a>
               <a className="lp-btn lp-btn--ghost lp-btn--large" href="#features">Explore features</a>
@@ -577,7 +736,7 @@ function LandingPage({ onEnterApp }) {
           <div>
             <a className="lp-logo" href="#top">
               <BrandMark />
-              <span>Pasture Ledger</span>
+              <span>Farm Ledger</span>
             </a>
             <p>A complete farm management platform for livestock farmers who want clarity over herd health, operations, and finances.</p>
           </div>
@@ -586,7 +745,7 @@ function LandingPage({ onEnterApp }) {
           <FooterLinks title="Company" links={["About us", "Contact", "Privacy policy", "Terms of use", "Support"]} />
         </div>
         <div className="lp-footer__bottom">
-          <p>© 2026 Pasture Ledger. All rights reserved.</p>
+          <p>© 2026 Farm Ledger. All rights reserved.</p>
           <span><a href="#top">Privacy</a><a href="#top">Terms</a><a href="#top">Cookies</a></span>
         </div>
       </footer>

@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://backend.wazaschool.co.ke/api" //|| "http://127.0.0.1:8000/api";
+const API_BASE_URL = "https://backend.wazaschool.co.ke/api";
 const ACCESS_KEY = "farm_manager_access_token";
 const REFRESH_KEY = "farm_manager_refresh_token";
 

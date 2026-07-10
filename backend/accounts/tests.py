@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from farms.models import Farm
@@ -9,6 +9,7 @@ from livestock.models import Animal
 User = get_user_model()
 
 
+@override_settings(SECURE_SSL_REDIRECT=False)
 class FarmScopingTests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -24,6 +25,8 @@ class FarmScopingTests(TestCase):
                 "email": "asha@example.com",
                 "gender": User.Gender.FEMALE,
                 "phoneNumber": "+254711111111",
+                "subscriptionPlan": Farm.SubscriptionPlan.BUSINESS,
+                "subscriptionBillingCycle": Farm.BillingCycle.ANNUAL,
                 "password": "secret123",
             },
             format="json",
@@ -35,7 +38,10 @@ class FarmScopingTests(TestCase):
         self.assertEqual(user.gender, User.Gender.FEMALE)
         self.assertEqual(user.phone_number, "+254711111111")
         self.assertEqual(user.farm.name, "North Ridge Farm")
+        self.assertEqual(user.farm.subscription_plan, Farm.SubscriptionPlan.BUSINESS)
+        self.assertEqual(user.farm.subscription_billing_cycle, Farm.BillingCycle.ANNUAL)
         self.assertEqual(response.data["user"]["farm"]["name"], "North Ridge Farm")
+        self.assertEqual(response.data["user"]["farm"]["subscriptionPlan"], Farm.SubscriptionPlan.BUSINESS)
         self.assertEqual(response.data["user"]["phoneNumber"], "+254711111111")
         self.assertIn("access", response.data)
 

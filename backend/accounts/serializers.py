@@ -12,6 +12,9 @@ class FarmSummarySerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
     location = serializers.CharField()
+    subscriptionPlan = serializers.CharField(source="subscription_plan")
+    subscriptionStatus = serializers.CharField(source="subscription_status")
+    subscriptionBillingCycle = serializers.CharField(source="subscription_billing_cycle")
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -65,6 +68,8 @@ class CurrentUserSerializer(UserSerializer):
 class FarmRegistrationSerializer(serializers.Serializer):
     farmName = serializers.CharField(max_length=160)
     farmLocation = serializers.CharField(max_length=160, required=False, allow_blank=True)
+    subscriptionPlan = serializers.ChoiceField(choices=Farm.SubscriptionPlan.choices, required=False, default=Farm.SubscriptionPlan.FREE)
+    subscriptionBillingCycle = serializers.ChoiceField(choices=Farm.BillingCycle.choices, required=False, default=Farm.BillingCycle.MONTHLY)
     firstName = serializers.CharField(max_length=150)
     lastName = serializers.CharField(max_length=150, required=False, allow_blank=True)
     email = serializers.EmailField()
@@ -83,6 +88,8 @@ class FarmRegistrationSerializer(serializers.Serializer):
         farm = Farm.objects.create(
             name=validated_data["farmName"],
             location=validated_data.get("farmLocation", ""),
+            subscription_plan=validated_data.get("subscriptionPlan", Farm.SubscriptionPlan.FREE),
+            subscription_billing_cycle=validated_data.get("subscriptionBillingCycle", Farm.BillingCycle.MONTHLY),
         )
         user = User(
             username=validated_data["email"],

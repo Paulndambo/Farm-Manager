@@ -1,8 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Pasture Ledger">
-  <rect width="64" height="64" rx="14" fill="#2f4538"/>
-  <path d="M14 43c6-11 16-18 30-21 4-1 8-1 10 0-4 10-12 17-24 19-5 1-10 1-16 2Z" fill="#d9a441"/>
-  <path d="M18 42c9-8 19-13 31-16" fill="none" stroke="#2f4538" stroke-width="4" stroke-linecap="round"/>
-  <path d="M19 48h26c3 0 5-2 5-5V23c0-3-2-5-5-5H19c-3 0-5 2-5 5v20c0 3 2 5 5 5Z" fill="none" stroke="#faf6ec" stroke-width="4"/>
-  <path d="M23 28h14M23 35h10M23 42h18" stroke="#faf6ec" stroke-width="3" stroke-linecap="round"/>
-  <circle cx="47" cy="19" r="6" fill="#a23b2e"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Farm Ledger">
+  <rect width="64" height="64" rx="16" fill="#d9a441"/>
+  <path d="M45.5 14.5C32 16.5 21.4 24.9 18 37.2c7.5 3 18.3 1.5 24.9-5.1 4.6-4.6 6.1-11.3 2.6-17.6Z" fill="none" stroke="#2f4538" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18 37.2c7.2-7.4 14.8-11.4 27.5-22.7" fill="none" stroke="#2f4538" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

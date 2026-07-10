@@ -1,8 +1,9 @@
 from rest_framework import generics
+from rest_framework.permissions import AllowAny
 
 from accounts.permissions import IsActiveFarmUser, IsAdminRole
 
-from .serializers import FarmSerializer
+from .serializers import ContactInquirySerializer, FarmSerializer
 
 
 class CurrentFarmView(generics.RetrieveUpdateAPIView):
@@ -15,3 +16,8 @@ class CurrentFarmView(generics.RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user.farm
+
+
+class ContactInquiryCreateView(generics.CreateAPIView):
+    serializer_class = ContactInquirySerializer
+    permission_classes = [AllowAny]

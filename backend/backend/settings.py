@@ -27,14 +27,7 @@ SECRET_KEY = os.getenv(
 
 DEBUG = os.getenv("DJANGO_DEBUG", "False").lower() == "true"
 
-ALLOWED_HOSTS = [
-    "backend.wazaschool.co.ke",
-    "farmledger.co.ke",
-    "www.farmledger.co.ke",
-    "farmmgr.vercel.app",
-    "localhost",
-    "127.0.0.1",
-]
+ALLOWED_HOSTS = ["*"]
 
 
 # -------------------------------------------------------------------
@@ -196,13 +189,9 @@ AUTH_USER_MODEL = "accounts.User"
 
 # -------------------------------------------------------------------
 # CORS configuration
-# -------------------------------------------------------------------
+# ------------------------------------------------------------------
 
-CORS_ALLOWED_ORIGINS = [
-    "https://farmmgr.vercel.app",
-    "https://farmledger.co.ke",
-    "https://www.farmledger.co.ke",
-]
+CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOW_METHODS = [
     "DELETE",
@@ -225,12 +214,9 @@ CORS_ALLOW_HEADERS = [
     "x-requested-with",
 ]
 
-
-# -------------------------------------------------------------------
-# CSRF configuration
-# -------------------------------------------------------------------
-
 CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "https://farmmgr.vercel.app",
     "https://farmledger.co.ke",
     "https://www.farmledger.co.ke",
@@ -265,22 +251,3 @@ SIMPLE_JWT = {
 # -------------------------------------------------------------------
 # Production HTTPS security
 # -------------------------------------------------------------------
-
-if not DEBUG:
-    SECURE_SSL_REDIRECT = True
-
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-
-    SECURE_PROXY_SSL_HEADER = (
-        "HTTP_X_FORWARDED_PROTO",
-        "https",
-    )
-
-    SECURE_HSTS_SECONDS = 31536000
-    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-    SECURE_HSTS_PRELOAD = True
-
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-
-    X_FRAME_OPTIONS = "DENY"

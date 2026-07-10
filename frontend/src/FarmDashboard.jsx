@@ -36,6 +36,17 @@ const MONTH_OPTIONS = [
   { value:7, label:"July" }, { value:8, label:"August" }, { value:9, label:"September" },
   { value:10, label:"October" }, { value:11, label:"November" }, { value:12, label:"December" },
 ];
+const SUBSCRIPTION_PLANS = [
+  { value:"free", label:"Free", price:"KES 0", limit:"Up to 20 active animals" },
+  { value:"standard", label:"Standard", price:"KES 500/month", limit:"Up to 100 active animals" },
+  { value:"business", label:"Business", price:"KES 1,200/month", limit:"Up to 500 active animals" },
+  { value:"commercial", label:"Commercial", price:"From KES 2,500/month", limit:"Up to 2,000 active animals" },
+  { value:"enterprise", label:"Enterprise", price:"Contact us", limit:"Custom animals, farms, users, and support" },
+];
+const SUBSCRIPTION_BILLING_CYCLES = [
+  { value:"monthly", label:"Monthly" },
+  { value:"annual", label:"Annual" },
+];
 const PIE_COLORS     = ["#A23B2E","#D9A441","#3F5D45","#8A7B62","#6C4F3D","#C97B53","#5B7A8C"];
 const BAR_REVENUE    = "#3F5D45";
 const BAR_EXPENSE    = "#A23B2E";
@@ -125,6 +136,14 @@ function roiLabel(value) {
   if (value === null) return "-";
   if (!Number.isFinite(value)) return "New value";
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function subscriptionPlanMeta(value) {
+  return SUBSCRIPTION_PLANS.find(plan => plan.value === value) || SUBSCRIPTION_PLANS[0];
+}
+
+function subscriptionCycleLabel(value) {
+  return SUBSCRIPTION_BILLING_CYCLES.find(cycle => cycle.value === value)?.label || "Monthly";
 }
 
 function statusTone(s) {
@@ -1305,17 +1324,22 @@ function UsersPage({ users, currentUser, onAdd, onEdit, onToggleStatus, onDelete
 
 function ProfilePage({ currentUser, farm, onSaveFarm }) {
   const canEdit = currentUser.role === "Admin";
-  const farmFormKey = `${farm?.name || ""}|${farm?.location || ""}`;
+  const farmFormKey = `${farm?.name || ""}|${farm?.location || ""}|${farm?.subscriptionPlan || "free"}|${farm?.subscriptionBillingCycle || "monthly"}`;
   const [formState, setForm] = useState({
     name: farm?.name || "",
     location: farm?.location || "",
+    subscriptionPlan: farm?.subscriptionPlan || "free",
+    subscriptionBillingCycle: farm?.subscriptionBillingCycle || "monthly",
     farmFormKey,
   });
   const form = formState.farmFormKey === farmFormKey ? formState : {
     name: farm?.name || "",
     location: farm?.location || "",
+    subscriptionPlan: farm?.subscriptionPlan || "free",
+    subscriptionBillingCycle: farm?.subscriptionBillingCycle || "monthly",
     farmFormKey,
   };
+  const currentPlan = subscriptionPlanMeta(farm?.subscriptionPlan || form.subscriptionPlan);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -1325,7 +1349,12 @@ function ProfilePage({ currentUser, farm, onSaveFarm }) {
     if (!canEdit) return;
     setSaving(true); setMessage(""); setError("");
     try {
-      await onSaveFarm({ name: form.name, location: form.location });
+      await onSaveFarm({
+        name: form.name,
+        location: form.location,
+        subscriptionPlan: form.subscriptionPlan,
+        subscriptionBillingCycle: form.subscriptionBillingCycle,
+      });
       setMessage("Farm details updated.");
     } catch (err) {
       setError(err.message || "Could not update farm details.");
@@ -1343,6 +1372,16 @@ function ProfilePage({ currentUser, farm, onSaveFarm }) {
             <div className="form-grid" style={{gridTemplateColumns:"1fr"}}>
               <label>Farm name<input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} disabled={!canEdit} required/></label>
               <label>Location<input value={form.location} onChange={e=>setForm(f=>({...f,location:e.target.value}))} disabled={!canEdit} placeholder="Town, county, or region"/></label>
+              <label>Subscription plan
+                <select value={form.subscriptionPlan} onChange={e=>setForm(f=>({...f,subscriptionPlan:e.target.value}))} disabled={!canEdit}>
+                  {SUBSCRIPTION_PLANS.map(plan=><option key={plan.value} value={plan.value}>{plan.label} - {plan.limit}</option>)}
+                </select>
+              </label>
+              <label>Billing cycle
+                <select value={form.subscriptionBillingCycle} onChange={e=>setForm(f=>({...f,subscriptionBillingCycle:e.target.value}))} disabled={!canEdit}>
+                  {SUBSCRIPTION_BILLING_CYCLES.map(cycle=><option key={cycle.value} value={cycle.value}>{cycle.label}</option>)}
+                </select>
+              </label>
             </div>
             {error && <p className="form-error">{error}</p>}
             {message && <p className="form-success">{message}</p>}
@@ -1361,6 +1400,8 @@ function ProfilePage({ currentUser, farm, onSaveFarm }) {
             <div><span className="muted small">Phone</span><strong className="mono">{currentUser.phoneNumber || "Not provided"}</strong></div>
             <div><span className="muted small">Role</span><strong>{currentUser.role}</strong></div>
             <div><span className="muted small">Farm</span><strong>{farm?.name || currentUser.farm?.name || "Farm workspace"}</strong></div>
+            <div><span className="muted small">Subscription</span><strong>{currentPlan.label} - {subscriptionCycleLabel(farm?.subscriptionBillingCycle)}</strong></div>
+            <div><span className="muted small">Plan limit</span><strong>{currentPlan.limit}</strong></div>
           </div>
         </div>
       </div>
@@ -1374,6 +1415,8 @@ function LoginPage({ onLogin, onRegister }) {
   const [password, setPassword] = useState("");
   const [farmName, setFarmName] = useState("");
   const [farmLocation, setFarmLocation] = useState("");
+  const [subscriptionPlan, setSubscriptionPlan] = useState("free");
+  const [subscriptionBillingCycle, setSubscriptionBillingCycle] = useState("monthly");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [gender, setGender] = useState("");
@@ -1387,7 +1430,18 @@ function LoginPage({ onLogin, onRegister }) {
     setSubmitting(true);
     try {
       if (isRegistering) {
-        await onRegister({ farmName, farmLocation, firstName, lastName, gender, phoneNumber, email, password });
+        await onRegister({
+          farmName,
+          farmLocation,
+          subscriptionPlan,
+          subscriptionBillingCycle,
+          firstName,
+          lastName,
+          gender,
+          phoneNumber,
+          email,
+          password,
+        });
       } else {
         await onLogin(email, password);
       }
@@ -1408,17 +1462,27 @@ function LoginPage({ onLogin, onRegister }) {
       <div className="login-card login-card--wide">
         <div className="login-brand">
           <span className="sidebar__brand-mark"><Sprout size={20}/></span>
-          <div><div className="sidebar__brand-name" style={{color:"var(--ink)"}}>Pasture Ledger</div><div className="muted small">{isRegistering ? "Create your farm workspace" : "Sign in to the farm dashboard"}</div></div>
+          <div><div className="sidebar__brand-name" style={{color:"var(--ink)"}}>Farm Ledger</div><div className="muted small">{isRegistering ? "Create your farm workspace" : "Sign in to the farm dashboard"}</div></div>
         </div>
         <div className="auth-switch" role="tablist" aria-label="Authentication mode">
           <button type="button" className={mode==="login"?"active":""} onClick={()=>switchMode("login")}>Sign in</button>
           <button type="button" className={mode==="register"?"active":""} onClick={()=>switchMode("register")}>Create farm</button>
         </div>
         <form onSubmit={handleSubmit}>
-          <div className="form-grid" style={{gridTemplateColumns:isRegistering?"1fr 1fr":"1fr"}}>
+          <div className={`form-grid auth-form-grid${isRegistering ? " auth-form-grid--register" : ""}`}>
             {isRegistering && <>
               <label>Farm name *<input value={farmName} onChange={e=>setFarmName(e.target.value)} placeholder="e.g. Green Valley Farm" required/></label>
               <label>Farm location<input value={farmLocation} onChange={e=>setFarmLocation(e.target.value)} placeholder="e.g. Nakuru"/></label>
+              <label>Subscription plan
+                <select value={subscriptionPlan} onChange={e=>setSubscriptionPlan(e.target.value)}>
+                  {SUBSCRIPTION_PLANS.map(plan=><option key={plan.value} value={plan.value}>{plan.label} - {plan.price}</option>)}
+                </select>
+              </label>
+              <label>Billing cycle
+                <select value={subscriptionBillingCycle} onChange={e=>setSubscriptionBillingCycle(e.target.value)}>
+                  {SUBSCRIPTION_BILLING_CYCLES.map(cycle=><option key={cycle.value} value={cycle.value}>{cycle.label}</option>)}
+                </select>
+              </label>
               <label>First name *<input value={firstName} onChange={e=>setFirstName(e.target.value)} placeholder="e.g. Asha" required/></label>
               <label>Last name<input value={lastName} onChange={e=>setLastName(e.target.value)} placeholder="e.g. Mwangi"/></label>
               <label>Gender<select value={gender} onChange={e=>setGender(e.target.value)}>{GENDER_OPTIONS.map(g=><option key={g} value={g}>{g || "Not specified"}</option>)}</select></label>
@@ -2519,7 +2583,7 @@ export default function FarmApp() {
           <aside className={`sidebar ${mobileNavOpen?"is-open":""}`}>
             <div className="sidebar__brand">
               <span className="sidebar__brand-mark"><Sprout size={18}/></span>
-              <div><div className="sidebar__brand-name">Pasture Ledger</div><div className="sidebar__brand-sub">Farm management</div></div>
+              <div><div className="sidebar__brand-name">Farm Ledger</div><div className="sidebar__brand-sub">Farm management</div></div>
               <button className="icon-btn sidebar__close" onClick={()=>setMobileNavOpen(false)} aria-label="Close menu"><X size={18}/></button>
             </div>
             <nav className="sidebar__nav">
@@ -2758,10 +2822,10 @@ tr.clickable:hover { background:#F3EDDD; }
 .confirm-body { font-size:13.5px;color:var(--muted);line-height:1.5;margin:0 0 6px; }
 
 /* Forms */
-.form-grid { display:grid;grid-template-columns:1fr 1fr;gap:12px 14px; }
-.form-grid label { display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:600;color:var(--muted); }
+.form-grid { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px 14px;min-width:0; }
+.form-grid label { display:flex;flex-direction:column;gap:5px;min-width:0;font-size:12.5px;font-weight:600;color:var(--muted); }
 .form-grid .span-2 { grid-column:span 2; }
-.form-grid input,.form-grid select,.form-grid textarea { border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--cream);outline:none; }
+.form-grid input,.form-grid select,.form-grid textarea { width:100%;min-width:0;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13.5px;font-family:'Inter',sans-serif;color:var(--ink);background:var(--cream);outline:none; }
 .form-grid input:focus,.form-grid select:focus,.form-grid textarea:focus { border-color:var(--rust); }
 .form-grid input:disabled { opacity:.5;cursor:not-allowed; }
 .form-grid textarea { resize:vertical; }
@@ -2780,13 +2844,15 @@ tr.clickable:hover { background:#F3EDDD; }
 
 /* Login */
 .login-screen { min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--green);padding:24px; }
-.login-card { background:var(--paper);border-radius:16px;padding:30px 28px;width:100%;max-width:380px;box-shadow:0 24px 60px rgba(0,0,0,.3); }
+.login-card { background:var(--paper);border-radius:16px;padding:30px 28px;width:100%;max-width:380px;box-sizing:border-box;box-shadow:0 24px 60px rgba(0,0,0,.3); }
 .login-card--wide { max-width:520px; }
 .login-brand { display:flex;align-items:center;gap:10px;margin-bottom:22px; }
 .login-hint  { margin-top:14px;line-height:1.5; }
 .auth-switch { display:grid;grid-template-columns:1fr 1fr;gap:4px;background:#EFE6D1;border:1px solid var(--line);border-radius:10px;padding:4px;margin-bottom:16px; }
 .auth-switch button { border:0;border-radius:7px;background:transparent;color:var(--muted);font-weight:800;font-size:13px;padding:8px 10px;cursor:pointer; }
 .auth-switch button.active { background:var(--paper);color:var(--ink);box-shadow:0 1px 4px rgba(0,0,0,.08); }
+.auth-form-grid { grid-template-columns:minmax(0,1fr); }
+.auth-form-grid--register { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 
 /* Drawer */
 .drawer-overlay { position:fixed;inset:0;background:rgba(42,36,25,.45);display:flex;justify-content:flex-end;z-index:60; }
