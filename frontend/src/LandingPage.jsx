@@ -416,7 +416,7 @@ function LandingPage({ onEnterApp }) {
               <div className="lp-hero__metrics">
                 <div><strong>100%</strong><span>Browser-based</span></div>
                 <div><strong>5 min</strong><span>To get started</span></div>
-                <div><strong>All sizes</strong><span>From 5 to 500 animals</span></div>
+                <div><strong>All sizes</strong><span>From 5 to millions of animals</span></div>
               </div>
             </div>
             <div className="lp-hero__visual">

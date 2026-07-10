@@ -1432,7 +1432,6 @@ function LoginPage({ onLogin, onRegister }) {
             <Lock size={15}/>{submitting ? (isRegistering ? "Creating farm..." : "Signing in...") : (isRegistering ? "Create farm workspace" : "Sign in")}
           </button>
         </form>
-        {!isRegistering && <p className="muted small login-hint">Default account: <span className="mono">admin@farm.local</span> / <span className="mono">admin123</span></p>}
         <p className="muted small login-hint">Each account belongs to one farm. Farm admins add managers and workers from User Management.</p>
       </div>
     </div>
