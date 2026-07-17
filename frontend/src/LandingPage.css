@@ -1455,12 +1455,14 @@
 .lp-contact {
   background: var(--cream);
   border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 120px 0 128px;
 }
 
 .lp-contact__grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
-  gap: 42px;
+  gap: 64px;
   align-items: start;
 }
 
@@ -1851,6 +1853,11 @@
     display: none;
   }
 
+  .lp-contact {
+    padding-top: 96px;
+    padding-bottom: 104px;
+  }
+
   .lp-features-grid,
   .lp-testimonials__grid,
   .lp-full-features__grid,
@@ -1915,6 +1922,11 @@
   .lp-cta {
     padding-top: 72px;
     padding-bottom: 72px;
+  }
+
+  .lp-contact {
+    padding-top: 88px;
+    padding-bottom: 92px;
   }
 
   .lp-hero {

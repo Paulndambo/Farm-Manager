@@ -220,6 +220,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://farmmgr.vercel.app",
     "https://farmledger.co.ke",
     "https://www.farmledger.co.ke",
+    "https://farmledger.wazaschool.co.ke",
+    "https://www.farmledger.wazaschool.co.ke",
 ]
 
 
