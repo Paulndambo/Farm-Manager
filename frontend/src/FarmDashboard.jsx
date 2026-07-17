@@ -2098,21 +2098,23 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
                 <button className="link-btn" onClick={()=>onNavigate("expenses")}>Expenses <ChevronRight size={13}/></button>
               </div>
             </div>
+            <div className="table-wrap finance-table-wrap">
             <table>
               <thead><tr><th>Type</th><th>Description</th><th>Date</th><th>Amount</th></tr></thead>
               <tbody>
                 {recentTx.map(tx=>(
                   <tr key={`${tx._kind}-${tx.id}`}>
-                    <td><Badge tone={tx._kind==="sale"?"success":"danger"}>{tx._kind==="sale"?"Revenue":tx._kind==="loan_payment"?"Loan payment":"Expense"}</Badge></td>
-                    <td>{tx.description}</td>
-                    <td className="mono">{formatDate(tx.date)}</td>
-                    <td className={`mono ${tx._kind==="sale"?"trend-up":"trend-down"}`}>
+                    <td data-label="Type"><Badge tone={tx._kind==="sale"?"success":"danger"}>{tx._kind==="sale"?"Revenue":tx._kind==="loan_payment"?"Loan payment":"Expense"}</Badge></td>
+                    <td data-label="Description">{tx.description}</td>
+                    <td data-label="Date" className="mono">{formatDate(tx.date)}</td>
+                    <td data-label="Amount" className={`mono ${tx._kind==="sale"?"trend-up":"trend-down"}`}>
                       {tx._kind==="sale"?"+":"-"}{currency(tx.amount)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -2313,7 +2315,7 @@ function SalesPage({ sales, onAdd, onDelete }) {
 
   return (
     <div className="page">
-      <div className="stat-row" style={{gridTemplateColumns:"repeat(3,minmax(0,1fr))"}}>
+      <div className="stat-row finance-summary-row">
         <StatCard icon={Banknote}   label="Total revenue"  value={currencyShort(total)}  sub="all recorded sales"           tone="green"/>
         <StatCard icon={TrendingUp} label="This month"     value={currencyShort(sales.filter(x=>monthKey(x.date)===monthKey(todayStr())).reduce((s,x)=>s+x.amount,0))} sub="revenue so far" tone="gold"/>
         <StatCard icon={Receipt}    label="Sale records"   value={sales.length}           sub="logged transactions"          tone="ink"/>
@@ -2328,21 +2330,21 @@ function SalesPage({ sales, onAdd, onDelete }) {
       {sales.length===0 ? (
         <EmptyState icon={Banknote} title="No sales recorded" body="Record your first sale to start tracking revenue." actionLabel="Record sale" onAction={onAdd}/>
       ) : rows.length===0 ? <p className="muted">No sales match that filter.</p> : (
-        <div className="table-wrap">
+        <div className="table-wrap finance-table-wrap">
           <table>
             <thead><tr><th>Type</th><th>Description</th><th>Date</th><th>Animal</th><th>Qty</th><th>Unit price</th><th>Amount</th><th>Buyer</th><th/></tr></thead>
             <tbody>
               {rows.map(x=>(
                 <tr key={x.id}>
-                  <td><Badge tone="neutral">{x.type}</Badge></td>
-                  <td>{x.description}</td>
-                  <td className="mono">{formatDate(x.date)}</td>
-                  <td>{x.animalLabel||"—"}</td>
-                  <td className="mono">{x.quantity||"—"}</td>
-                  <td className="mono">{x.unitPrice?currency(x.unitPrice):"—"}</td>
-                  <td className="mono trend-up">{currency(x.amount)}</td>
-                  <td>{x.buyer||"—"}</td>
-                  <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
+                  <td data-label="Type"><Badge tone="neutral">{x.type}</Badge></td>
+                  <td data-label="Description">{x.description}</td>
+                  <td data-label="Date" className="mono">{formatDate(x.date)}</td>
+                  <td data-label="Animal">{x.animalLabel||"-"}</td>
+                  <td data-label="Qty" className="mono">{x.quantity||"-"}</td>
+                  <td data-label="Unit price" className="mono">{x.unitPrice?currency(x.unitPrice):"-"}</td>
+                  <td data-label="Amount" className="mono trend-up">{currency(x.amount)}</td>
+                  <td data-label="Buyer">{x.buyer||"-"}</td>
+                  <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
                 </tr>
               ))}
             </tbody>
@@ -2366,7 +2368,7 @@ function ExpensesPage({ expenses, onAdd, onDelete }) {
 
   return (
     <div className="page">
-      <div className="stat-row" style={{gridTemplateColumns:"repeat(3,minmax(0,1fr))"}}>
+      <div className="stat-row finance-summary-row">
         <StatCard icon={Receipt}      label="Total expenses"  value={currencyShort(total)} sub="all recorded costs"           tone="rust"/>
         <StatCard icon={TrendingDown} label="This month"      value={currencyShort(expenses.filter(x=>monthKey(x.date)===monthKey(todayStr())).reduce((s,x)=>s+x.amount,0))} sub="spent so far" tone="gold"/>
         <StatCard icon={Wallet}       label="Expense records" value={expenses.length}       sub="logged transactions"          tone="ink"/>
@@ -2383,19 +2385,19 @@ function ExpensesPage({ expenses, onAdd, onDelete }) {
           body="Adding purchased animals or restocking feed automatically logs an expense here. You can also add costs by hand."
           actionLabel="Add expense" onAction={onAdd}/>
       ) : rows.length===0 ? <p className="muted">No expenses match that filter.</p> : (
-        <div className="table-wrap">
+        <div className="table-wrap finance-table-wrap">
           <table>
             <thead><tr><th>Category</th><th>Description</th><th>Date</th><th>Amount</th><th>Vendor</th><th>Source</th><th/></tr></thead>
             <tbody>
               {rows.map(x=>(
                 <tr key={x.id}>
-                  <td><Badge tone="neutral">{x.category}</Badge></td>
-                  <td>{x.description}</td>
-                  <td className="mono">{formatDate(x.date)}</td>
-                  <td className="mono trend-down">{currency(x.amount)}</td>
-                  <td>{x.vendor||"—"}</td>
-                  <td><span className="muted small">{x.autoLogged?"Auto-logged":"Manual"}</span></td>
-                  <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
+                  <td data-label="Category"><Badge tone="neutral">{x.category}</Badge></td>
+                  <td data-label="Description">{x.description}</td>
+                  <td data-label="Date" className="mono">{formatDate(x.date)}</td>
+                  <td data-label="Amount" className="mono trend-down">{currency(x.amount)}</td>
+                  <td data-label="Vendor">{x.vendor||"-"}</td>
+                  <td data-label="Source"><span className="muted small">{x.autoLogged?"Auto-logged":"Manual"}</span></td>
+                  <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
                 </tr>
               ))}
             </tbody>
@@ -2894,6 +2896,7 @@ tr.clickable:hover { background:#F3EDDD; }
 
 /* Finance pages */
 .fin-stats { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.finance-summary-row { grid-template-columns:repeat(3,minmax(0,1fr)); }
 .fin-month-strip { display:flex;align-items:center;gap:20px;background:var(--green);color:#EFE8D6;border-radius:12px;padding:14px 20px;flex-wrap:wrap; }
 .fin-month-strip__label { font-family:'Zilla Slab',serif;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.05em;opacity:.7;white-space:nowrap; }
 .fin-month-strip__kpis { display:flex;gap:28px;flex:1;flex-wrap:wrap; }
@@ -2923,11 +2926,13 @@ tr.clickable:hover { background:#F3EDDD; }
   .profile-grid { grid-template-columns:1fr; }
   .panel--wide { grid-column:span 1; }
   .fin-stats { grid-template-columns:1fr 1fr; }
+  .finance-summary-row { grid-template-columns:1fr 1fr; }
   .fin-dash-strip { flex-wrap:wrap; gap:12px; }
   .fin-dash-strip__kpis { gap:14px; }
   .fin-dash-strip__divider { display:none; }
   .fin-month-strip { gap:12px; }
   .fin-month-strip__kpis { gap:16px; }
+  .finance-table-wrap table { min-width:640px; }
   .form-grid { grid-template-columns:1fr; }
   .form-grid .span-2 { grid-column:span 1; }
   .drawer { max-width:100%; }
@@ -2942,17 +2947,33 @@ tr.clickable:hover { background:#F3EDDD; }
 
 @media (max-width:480px) {
   .stat-row { grid-template-columns:1fr; }
-  .fin-stats { grid-template-columns:1fr 1fr; }
+  .fin-stats,.finance-summary-row { grid-template-columns:1fr; }
   .topbar h1 { font-size:17px; }
   .login-card { padding:24px 18px; }
   .search-box { max-width:none;width:100%; }
+  .toolbar { align-items:stretch; }
+  .toolbar .search-box { flex-basis:100%; }
+  .toolbar .btn { justify-content:center; }
   .toolbar select { flex:1; }
   .modal-overlay { padding:0;align-items:flex-end; }
   .modal-card { max-width:100%;max-height:92dvh;border-radius:16px 16px 0 0; }
   .drawer__quick-stats { grid-template-columns:1fr 1fr; }
   .overview-grid { grid-template-columns:1fr; }
   .drawer__tabs { overflow-x:auto;-webkit-overflow-scrolling:touch; }
-  .fin-month-strip__kpis { gap:12px; }
+  .fin-month-strip { align-items:stretch; }
+  .fin-month-strip__kpis { display:grid;grid-template-columns:1fr;gap:12px; }
+  .fin-dash-strip { align-items:stretch; }
+  .fin-dash-strip__kpis { display:grid;grid-template-columns:1fr;gap:10px;width:100%; }
+  .finance-table-wrap { background:transparent;border:0;box-shadow:none;overflow:visible; }
+  .finance-table-wrap table,.finance-table-wrap tbody,.finance-table-wrap tr,.finance-table-wrap td { display:block;width:100%;min-width:0; }
+  .finance-table-wrap thead { display:none; }
+  .finance-table-wrap tr { margin-bottom:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:8px 10px;box-shadow:0 8px 22px rgba(42,36,25,.05); }
+  .finance-table-wrap td { display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line);padding:9px 0;text-align:right; }
+  .finance-table-wrap td:last-child { border-bottom:0; }
+  .finance-table-wrap td::before { content:attr(data-label);color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-align:left; }
+  .finance-table-wrap td[data-label=""]::before { content:""; }
+  .finance-table-wrap .actions-cell { justify-content:flex-end; }
+  .finance-table-wrap .badge { margin-left:auto; }
 }
 
 @media print {
