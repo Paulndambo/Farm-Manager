@@ -1180,13 +1180,13 @@ function VaccinationsPage({ animals, vaccinations, onAdd, onDelete }) {
 }
 
 function GrowthPage({ animals, growthRecords, onAdd, onDelete }) {
-  const [selectedId, setSelectedId] = useState(animals[0]?.id||"");
+  const [selectedId, setSelectedId] = useState(animals[0]?.id!=null ? String(animals[0].id) : "");
   const [confirmId, setConfirmId]   = useState(null);
-  const selectedAnimalId = animals.some(a=>a.id===selectedId) ? selectedId : (animals[0]?.id||"");
+  const animal = animals.find(a=>String(a.id)===selectedId) || animals[0] || null;
+  const selectedAnimalId = animal?.id ?? "";
 
-  const records = growthRecords.filter(g=>g.animalId===selectedAnimalId).sort((a,b)=>a.date<b.date?-1:1);
+  const records = growthRecords.filter(g=>String(g.animalId)===String(selectedAnimalId)).sort((a,b)=>a.date<b.date?-1:1);
   const chartData = records.map(g=>({label:formatDate(g.date),weight:g.weightKg}));
-  const animal    = animals.find(a=>a.id===selectedAnimalId);
 
   let withGain=[]; let prev=null;
   [...records].reverse().forEach(g=>{ withGain.push({...g,gain:prev!==null?Math.round((g.weightKg-prev)*10)/10:null}); prev=g.weightKg; });
@@ -1194,9 +1194,9 @@ function GrowthPage({ animals, growthRecords, onAdd, onDelete }) {
   return (
     <div className="page">
       <div className="toolbar">
-        <select value={selectedAnimalId} onChange={e=>setSelectedId(e.target.value)} disabled={!animals.length}>
+        <select value={selectedAnimalId==="" ? "" : String(selectedAnimalId)} onChange={e=>setSelectedId(e.target.value)} disabled={!animals.length}>
           {!animals.length&&<option>No animals yet</option>}
-          {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""}</option>)}
+          {animals.map(a=><option key={a.id} value={String(a.id)}>{a.tagId}{a.name?` — ${a.name}`:""}</option>)}
         </select>
         <button className="btn btn--primary" onClick={onAdd}><Plus size={15}/>Log weight</button>
       </div>
