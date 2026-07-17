@@ -1083,7 +1083,7 @@ function AnimalsPage({ animals, healthEvents, onAdd, onDelete, onOpen }) {
       {animals.length===0 ? (
         <EmptyState icon={PawPrint} title="No animals yet" body="Add your first animal to start the register." actionLabel="Add animal" onAction={onAdd}/>
       ) : filtered.length===0 ? <p className="muted">No animals match that search.</p> : (
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table-wrap">
           <table>
             <thead>
               <tr>
@@ -1094,25 +1094,25 @@ function AnimalsPage({ animals, healthEvents, onAdd, onDelete, onOpen }) {
             <tbody>
               {filtered.map(a=>(
                 <tr key={a.id} className="clickable" onClick={()=>onOpen(a.id)}>
-                  <td>
+                  <td data-label="Animal">
                     <div className="table-primary">
                       <EarTag>{a.tagId}</EarTag>
                       <strong>{a.name||"Unnamed"}</strong>
                     </div>
                     <div className="muted small">{a.location||"No location"} - {calcAge(a.dob)} old - {a.sex}</div>
                   </td>
-                  <td>
+                  <td data-label="Type">
                     <strong>{a.species}</strong>
                     <div className="muted small">{a.breed||"No breed"} - {a.origin||"Origin not set"}</div>
                   </td>
-                  <td><Badge tone={statusTone(a.status)}>{a.status}</Badge></td>
-                  <td className="mono">{a.weightKg?`${a.weightKg} kg`:"-"}</td>
-                  <td>
+                  <td data-label="Status"><Badge tone={statusTone(a.status)}>{a.status}</Badge></td>
+                  <td data-label="Weight" className="mono">{a.weightKg?`${a.weightKg} kg`:"-"}</td>
+                  <td data-label="Value">
                     <strong className="mono">{a.currentValue?currencyShort(a.currentValue):"-"}</strong>
                     <div className={`small mono ${animalRoi(a)===null||animalRoi(a)>=0?"trend-up":"trend-down"}`}>{roiLabel(animalRoi(a))}</div>
                   </td>
-                  <td>{openHealth(a.id)>0?<Badge tone="danger">{openHealth(a.id)}</Badge>:"-"}</td>
-                  <td className="actions-cell">
+                  <td data-label="Issues">{openHealth(a.id)>0?<Badge tone="danger">{openHealth(a.id)}</Badge>:"-"}</td>
+                  <td data-label="" className="actions-cell">
                     <button className="icon-btn icon-btn--danger" onClick={e=>{e.stopPropagation();setConfirmId(a.id);}} aria-label="Delete"><Trash2 size={15}/></button>
                   </td>
                 </tr>
@@ -1153,21 +1153,21 @@ function VaccinationsPage({ animals, vaccinations, onAdd, onDelete }) {
       {vaccinations.length===0 ? (
         <EmptyState icon={Syringe} title="No vaccinations recorded" body="Record the first vaccination to start tracking herd health." actionLabel="Record vaccination" onAction={onAdd}/>
       ) : rows.length===0 ? <p className="muted">No records match that search.</p> : (
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table-wrap">
           <table>
             <thead><tr><th>Animal</th><th>Vaccine</th><th>Administered</th><th>Next due</th><th>Status</th><th>By</th><th>Batch</th><th>Notes</th><th/></tr></thead>
             <tbody>
               {rows.map(v=>(
                 <tr key={v.id}>
-                  <td>{v.animal?<><EarTag>{v.animal.tagId}</EarTag> {v.animal.name}</>:<span className="muted">Removed</span>}</td>
-                  <td>{v.vaccine}</td>
-                  <td className="mono">{formatDate(v.dateGiven)}</td>
-                  <td className="mono">{formatDate(v.nextDue)}</td>
-                  <td><Badge tone={v.st.tone}>{v.st.label}</Badge></td>
-                  <td>{v.administeredBy||"—"}</td>
-                  <td className="mono">{v.batchNo||"—"}</td>
-                  <td className="muted">{v.notes||"—"}</td>
-                  <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(v.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
+                  <td data-label="Animal">{v.animal?<><EarTag>{v.animal.tagId}</EarTag> {v.animal.name}</>:<span className="muted">Removed</span>}</td>
+                  <td data-label="Vaccine">{v.vaccine}</td>
+                  <td data-label="Administered" className="mono">{formatDate(v.dateGiven)}</td>
+                  <td data-label="Next due" className="mono">{formatDate(v.nextDue)}</td>
+                  <td data-label="Status"><Badge tone={v.st.tone}>{v.st.label}</Badge></td>
+                  <td data-label="By">{v.administeredBy||"-"}</td>
+                  <td data-label="Batch" className="mono">{v.batchNo||"-"}</td>
+                  <td data-label="Notes" className="muted">{v.notes||"-"}</td>
+                  <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(v.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
                 </tr>
               ))}
             </tbody>
@@ -1251,7 +1251,7 @@ function FeedPage({ feedItems, onAdd, onAdjust, onDelete }) {
       {feedItems.length===0 ? (
         <EmptyState icon={Wheat} title="No feed stock recorded" body="Add a feed type to start tracking inventory and reorder levels." actionLabel="Add feed item" onAction={onAdd}/>
       ) : (
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table-wrap">
           <table>
             <thead><tr><th>Feed type</th><th>In stock</th><th>Reorder level</th><th>Status</th><th>Cost / kg</th><th>Supplier</th><th>Last restocked</th><th/></tr></thead>
             <tbody>
@@ -1259,14 +1259,14 @@ function FeedPage({ feedItems, onAdd, onAdjust, onDelete }) {
                 const st=getFeedStatus(f);
                 return (
                   <tr key={f.id}>
-                    <td><Package size={14} style={{marginRight:6,verticalAlign:-2,color:"#8A7B62"}}/>{f.feedType}</td>
-                    <td className="mono">{f.quantityKg} kg</td>
-                    <td className="mono">{f.reorderLevel} kg</td>
-                    <td><Badge tone={st.tone}>{st.label}</Badge></td>
-                    <td className="mono">{f.costPerKg?f.costPerKg.toFixed(2):"—"}</td>
-                    <td>{f.supplier||"—"}</td>
-                    <td className="mono">{formatDate(f.lastRestocked)}</td>
-                    <td className="actions-cell">
+                    <td data-label="Feed type"><Package size={14} style={{marginRight:6,verticalAlign:-2,color:"#8A7B62"}}/>{f.feedType}</td>
+                    <td data-label="In stock" className="mono">{f.quantityKg} kg</td>
+                    <td data-label="Reorder level" className="mono">{f.reorderLevel} kg</td>
+                    <td data-label="Status"><Badge tone={st.tone}>{st.label}</Badge></td>
+                    <td data-label="Cost / kg" className="mono">{f.costPerKg?f.costPerKg.toFixed(2):"-"}</td>
+                    <td data-label="Supplier">{f.supplier||"-"}</td>
+                    <td data-label="Last restocked" className="mono">{formatDate(f.lastRestocked)}</td>
+                    <td data-label="" className="actions-cell">
                       <button className="btn btn--tiny" onClick={()=>setAdjustState({item:f,mode:"add"})}><ArrowUp size={12}/>Restock</button>
                       <button className="btn btn--tiny" onClick={()=>setAdjustState({item:f,mode:"remove"})}><ArrowDown size={12}/>Use</button>
                       <button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(f.id)} aria-label="Delete"><Trash2 size={15}/></button>
@@ -2158,13 +2158,13 @@ function ContractsPage({ partners, contracts, invoices, onAddPartner, onAddContr
       {tab==="partners" && (partners.length===0 ? (
         <EmptyState icon={Users} title="No partners yet" body="Add suppliers, veterinarians, milk buyers, butcheries, or egg customers before creating contracts and invoices." actionLabel="Add partner" onAction={onAddPartner}/>
       ) : (
-        <div className="table-wrap"><table>
+        <div className="table-wrap responsive-table-wrap"><table>
           <thead><tr><th>Name</th><th>Type</th><th>Contact</th><th>Phone</th><th>Email</th><th>Notes</th><th/></tr></thead>
           <tbody>{partners.map(p=>(
             <tr key={p.id}>
-              <td><strong>{p.name}</strong></td><td><Badge tone={p.partnerType==="Supplier"?"warning":p.partnerType==="Customer"?"success":"neutral"}>{p.partnerType}</Badge></td>
-              <td>{p.contactPerson||"-"}</td><td className="mono">{p.phone||"-"}</td><td className="mono">{p.email||"-"}</td><td className="muted">{p.notes||"-"}</td>
-              <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"partner",id:p.id})} aria-label="Delete partner"><Trash2 size={15}/></button></td>
+              <td data-label="Name"><strong>{p.name}</strong></td><td data-label="Type"><Badge tone={p.partnerType==="Supplier"?"warning":p.partnerType==="Customer"?"success":"neutral"}>{p.partnerType}</Badge></td>
+              <td data-label="Contact">{p.contactPerson||"-"}</td><td data-label="Phone" className="mono">{p.phone||"-"}</td><td data-label="Email" className="mono">{p.email||"-"}</td><td data-label="Notes" className="muted">{p.notes||"-"}</td>
+              <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"partner",id:p.id})} aria-label="Delete partner"><Trash2 size={15}/></button></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -2173,14 +2173,14 @@ function ContractsPage({ partners, contracts, invoices, onAddPartner, onAddContr
       {tab==="contracts" && (contracts.length===0 ? (
         <EmptyState icon={FileText} title="No contracts yet" body="Create agreements for suppliers who bill the farm and customers who buy farm outputs." actionLabel="Add contract" onAction={onAddContract}/>
       ) : (
-        <div className="table-wrap"><table>
+        <div className="table-wrap responsive-table-wrap"><table>
           <thead><tr><th>Contract</th><th>Partner</th><th>Direction</th><th>Goods / services</th><th>Cycle</th><th>Rate</th><th>Status</th><th>Dates</th><th/></tr></thead>
           <tbody>{contracts.map(c=>(
             <tr key={c.id}>
-              <td><strong>{c.title}</strong></td><td>{c.partnerName}</td><td><Badge tone={c.direction==="Farm output"?"success":"warning"}>{c.direction}</Badge></td>
-              <td>{c.goodsOrServices}</td><td>{c.billingCycle}</td><td className="mono">{c.agreedRate?currency(c.agreedRate):"-"}</td><td><Badge tone={c.status==="Active"?"success":"neutral"}>{c.status}</Badge></td>
-              <td className="mono">{formatDate(c.startDate)}{c.endDate?` - ${formatDate(c.endDate)}`:""}</td>
-              <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"contract",id:c.id})} aria-label="Delete contract"><Trash2 size={15}/></button></td>
+              <td data-label="Contract"><strong>{c.title}</strong></td><td data-label="Partner">{c.partnerName}</td><td data-label="Direction"><Badge tone={c.direction==="Farm output"?"success":"warning"}>{c.direction}</Badge></td>
+              <td data-label="Goods / services">{c.goodsOrServices}</td><td data-label="Cycle">{c.billingCycle}</td><td data-label="Rate" className="mono">{c.agreedRate?currency(c.agreedRate):"-"}</td><td data-label="Status"><Badge tone={c.status==="Active"?"success":"neutral"}>{c.status}</Badge></td>
+              <td data-label="Dates" className="mono">{formatDate(c.startDate)}{c.endDate?` - ${formatDate(c.endDate)}`:""}</td>
+              <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"contract",id:c.id})} aria-label="Delete contract"><Trash2 size={15}/></button></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -2189,14 +2189,14 @@ function ContractsPage({ partners, contracts, invoices, onAddPartner, onAddContr
       {tab==="invoices" && (invoices.length===0 ? (
         <EmptyState icon={Receipt} title="No invoices yet" body="Record supplier invoices the farm must pay, or customer invoices the farm has issued for outputs." actionLabel="Add invoice" onAction={onAddInvoice}/>
       ) : (
-        <div className="table-wrap"><table>
+        <div className="table-wrap responsive-table-wrap"><table>
           <thead><tr><th>Invoice</th><th>Type</th><th>Partner</th><th>Contract</th><th>Issued</th><th>Due</th><th>Amount</th><th>Paid</th><th>Status</th><th/></tr></thead>
           <tbody>{invoices.map(i=>(
             <tr key={i.id}>
-              <td><strong>{i.invoiceNumber}</strong><div className="muted small">{i.description}</div><div className="muted small">{i.items?.length||0} item{i.items?.length===1?"":"s"}</div></td><td><Badge tone={i.direction==="Receivable"?"success":"danger"}>{i.direction}</Badge></td>
-              <td>{i.partnerName}</td><td>{i.contractTitle||"-"}</td><td className="mono">{formatDate(i.issueDate)}</td><td className="mono">{formatDate(i.dueDate)}</td>
-              <td className="mono">{currency(i.amount)}</td><td className="mono">{currency(i.amountPaid)}</td><td><Badge tone={invoiceTone(i.status)}>{i.status}</Badge></td>
-              <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"invoice",id:i.id})} aria-label="Delete invoice"><Trash2 size={15}/></button></td>
+              <td data-label="Invoice"><strong>{i.invoiceNumber}</strong><div className="muted small">{i.description}</div><div className="muted small">{i.items?.length||0} item{i.items?.length===1?"":"s"}</div></td><td data-label="Type"><Badge tone={i.direction==="Receivable"?"success":"danger"}>{i.direction}</Badge></td>
+              <td data-label="Partner">{i.partnerName}</td><td data-label="Contract">{i.contractTitle||"-"}</td><td data-label="Issued" className="mono">{formatDate(i.issueDate)}</td><td data-label="Due" className="mono">{formatDate(i.dueDate)}</td>
+              <td data-label="Amount" className="mono">{currency(i.amount)}</td><td data-label="Paid" className="mono">{currency(i.amountPaid)}</td><td data-label="Status"><Badge tone={invoiceTone(i.status)}>{i.status}</Badge></td>
+              <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"invoice",id:i.id})} aria-label="Delete invoice"><Trash2 size={15}/></button></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -2256,21 +2256,21 @@ function LoansPage({ loans, onAddLoan, onAddPayment, onDeleteLoan, onDeletePayme
       {loans.length===0 ? (
         <EmptyState icon={Banknote} title="No loans recorded" body="Add farm loans and track each repayment against the outstanding balance." actionLabel="Add loan" onAction={onAddLoan}/>
       ) : rows.length===0 ? <p className="muted">No loans match that filter.</p> : (
-        <div className="table-wrap">
+        <div className="table-wrap responsive-table-wrap">
           <table>
             <thead><tr><th>Lender</th><th>Purpose</th><th>Issued</th><th>Due</th><th>Principal</th><th>Interest</th><th>Paid</th><th>Outstanding</th><th>Status</th><th/></tr></thead>
             <tbody>{rows.map(l=>(
               <tr key={l.id}>
-                <td><strong>{l.lender}</strong><div className="muted small">{l.paymentFrequency}</div></td>
-                <td>{l.purpose}<div className="muted small">{l.collateral||"No collateral recorded"}</div></td>
-                <td className="mono">{formatDate(l.issueDate)}</td>
-                <td className="mono">{formatDate(l.dueDate)}</td>
-                <td className="mono">{currency(l.principalAmount)}</td>
-                <td className="mono">{l.interestRate}%</td>
-                <td className="mono trend-up">{currency(l.totalPaid)}</td>
-                <td className={`mono ${l.outstandingBalance>0?"trend-down":"trend-up"}`}>{currency(l.outstandingBalance)}</td>
-                <td><Badge tone={loanTone(l.status)}>{l.status}</Badge></td>
-                <td className="actions-cell">
+                <td data-label="Lender"><strong>{l.lender}</strong><div className="muted small">{l.paymentFrequency}</div></td>
+                <td data-label="Purpose">{l.purpose}<div className="muted small">{l.collateral||"No collateral recorded"}</div></td>
+                <td data-label="Issued" className="mono">{formatDate(l.issueDate)}</td>
+                <td data-label="Due" className="mono">{formatDate(l.dueDate)}</td>
+                <td data-label="Principal" className="mono">{currency(l.principalAmount)}</td>
+                <td data-label="Interest" className="mono">{l.interestRate}%</td>
+                <td data-label="Paid" className="mono trend-up">{currency(l.totalPaid)}</td>
+                <td data-label="Outstanding" className={`mono ${l.outstandingBalance>0?"trend-down":"trend-up"}`}>{currency(l.outstandingBalance)}</td>
+                <td data-label="Status"><Badge tone={loanTone(l.status)}>{l.status}</Badge></td>
+                <td data-label="" className="actions-cell">
                   <button className="btn btn--tiny" disabled={l.outstandingBalance<=0} onClick={()=>onAddPayment(l.id)}><Receipt size={12}/>Pay</button>
                   <button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"loan",id:l.id})} aria-label="Delete loan"><Trash2 size={15}/></button>
                 </td>
@@ -2283,19 +2283,21 @@ function LoansPage({ loans, onAddLoan, onAddPayment, onDeleteLoan, onDeletePayme
       <div className="panel">
         <div className="panel__head"><h3><Receipt size={16}/>Recent loan payments</h3></div>
         {recentPayments.length===0 ? <p className="muted small">No loan payments recorded yet.</p> : (
+          <div className="table-wrap responsive-table-wrap">
           <table>
             <thead><tr><th>Loan</th><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th/></tr></thead>
             <tbody>{recentPayments.map(p=>(
               <tr key={p.id}>
-                <td>{p.loan.lender}<div className="muted small">{p.loan.purpose}</div></td>
-                <td className="mono">{formatDate(p.date)}</td>
-                <td className="mono trend-down">{currency(p.amount)}</td>
-                <td>{p.method||"-"}</td>
-                <td className="mono">{p.reference||"-"}</td>
-                <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"payment",id:p.id})} aria-label="Delete payment"><Trash2 size={15}/></button></td>
+                <td data-label="Loan">{p.loan.lender}<div className="muted small">{p.loan.purpose}</div></td>
+                <td data-label="Date" className="mono">{formatDate(p.date)}</td>
+                <td data-label="Amount" className="mono trend-down">{currency(p.amount)}</td>
+                <td data-label="Method">{p.method||"-"}</td>
+                <td data-label="Reference" className="mono">{p.reference||"-"}</td>
+                <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"payment",id:p.id})} aria-label="Delete payment"><Trash2 size={15}/></button></td>
               </tr>
             ))}</tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -2932,7 +2934,7 @@ tr.clickable:hover { background:#F3EDDD; }
   .fin-dash-strip__divider { display:none; }
   .fin-month-strip { gap:12px; }
   .fin-month-strip__kpis { gap:16px; }
-  .finance-table-wrap table { min-width:640px; }
+  .finance-table-wrap table,.responsive-table-wrap table { min-width:640px; }
   .form-grid { grid-template-columns:1fr; }
   .form-grid .span-2 { grid-column:span 1; }
   .drawer { max-width:100%; }
@@ -2955,6 +2957,8 @@ tr.clickable:hover { background:#F3EDDD; }
   .toolbar .search-box { flex-basis:100%; }
   .toolbar .btn { justify-content:center; }
   .toolbar select { flex:1; }
+  .segmented-tabs { width:100%; }
+  .segmented-tabs button { flex:1;min-width:0; }
   .modal-overlay { padding:0;align-items:flex-end; }
   .modal-card { max-width:100%;max-height:92dvh;border-radius:16px 16px 0 0; }
   .drawer__quick-stats { grid-template-columns:1fr 1fr; }
@@ -2964,16 +2968,18 @@ tr.clickable:hover { background:#F3EDDD; }
   .fin-month-strip__kpis { display:grid;grid-template-columns:1fr;gap:12px; }
   .fin-dash-strip { align-items:stretch; }
   .fin-dash-strip__kpis { display:grid;grid-template-columns:1fr;gap:10px;width:100%; }
-  .finance-table-wrap { background:transparent;border:0;box-shadow:none;overflow:visible; }
-  .finance-table-wrap table,.finance-table-wrap tbody,.finance-table-wrap tr,.finance-table-wrap td { display:block;width:100%;min-width:0; }
-  .finance-table-wrap thead { display:none; }
-  .finance-table-wrap tr { margin-bottom:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:8px 10px;box-shadow:0 8px 22px rgba(42,36,25,.05); }
-  .finance-table-wrap td { display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line);padding:9px 0;text-align:right; }
-  .finance-table-wrap td:last-child { border-bottom:0; }
-  .finance-table-wrap td::before { content:attr(data-label);color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-align:left; }
-  .finance-table-wrap td[data-label=""]::before { content:""; }
-  .finance-table-wrap .actions-cell { justify-content:flex-end; }
-  .finance-table-wrap .badge { margin-left:auto; }
+  .finance-table-wrap,.responsive-table-wrap { background:transparent;border:0;box-shadow:none;overflow:visible; }
+  .finance-table-wrap table,.finance-table-wrap tbody,.finance-table-wrap tr,.finance-table-wrap td,
+  .responsive-table-wrap table,.responsive-table-wrap tbody,.responsive-table-wrap tr,.responsive-table-wrap td { display:block;width:100%;min-width:0; }
+  .finance-table-wrap thead,.responsive-table-wrap thead { display:none; }
+  .finance-table-wrap tr,.responsive-table-wrap tr { margin-bottom:12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);padding:8px 10px;box-shadow:0 8px 22px rgba(42,36,25,.05); }
+  .finance-table-wrap td,.responsive-table-wrap td { display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:1px solid var(--line);padding:9px 0;text-align:right; }
+  .finance-table-wrap td:last-child,.responsive-table-wrap td:last-child { border-bottom:0; }
+  .finance-table-wrap td::before,.responsive-table-wrap td::before { content:attr(data-label);color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;text-align:left; }
+  .finance-table-wrap td[data-label=""]::before,.responsive-table-wrap td[data-label=""]::before { content:""; }
+  .finance-table-wrap .actions-cell,.responsive-table-wrap .actions-cell { justify-content:flex-end;flex-wrap:wrap; }
+  .finance-table-wrap .badge,.responsive-table-wrap .badge { margin-left:auto; }
+  .responsive-table-wrap .table-primary { justify-content:flex-end;text-align:right; }
 }
 
 @media print {
