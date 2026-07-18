@@ -214,18 +214,6 @@ CORS_ALLOW_HEADERS = [
     "x-csrftoken",
     "x-requested-with",
 ]
-
-CSRF_TRUSTED_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "https://farmmgr.vercel.app",
-    "https://farmledger.co.ke",
-    "https://www.farmledger.co.ke",
-    "https://farmledger.wazaschool.co.ke",
-    "https://www.farmledger.wazaschool.co.ke",
-]
-
-
 # -------------------------------------------------------------------
 # Django REST Framework
 # -------------------------------------------------------------------
