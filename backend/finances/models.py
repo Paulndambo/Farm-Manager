@@ -170,6 +170,14 @@ class Loan(models.Model):
     def outstanding_balance(self):
         return max(self.total_due - self.total_paid, Decimal("0")).quantize(Decimal("0.01"))
 
+    def refresh_payment_status(self):
+        if self.outstanding_balance <= Decimal("0") and self.status != self.Status.PAID:
+            self.status = self.Status.PAID
+            self.save(update_fields=["status"])
+        elif self.outstanding_balance > Decimal("0") and self.status == self.Status.PAID:
+            self.status = self.Status.ACTIVE
+            self.save(update_fields=["status"])
+
     def __str__(self):
         return f"{self.lender} {self.principal_amount}"
 

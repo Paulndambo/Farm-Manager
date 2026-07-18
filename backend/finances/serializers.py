@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from django.db import transaction
 from rest_framework import serializers
 
@@ -164,6 +166,26 @@ class LoanPaymentSerializer(serializers.ModelSerializer):
         if loan.farm_id != self.context["request"].user.farm_id:
             raise serializers.ValidationError("Loan does not belong to your farm.")
         return loan
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        loan = attrs.get("loan") or self.instance.loan
+        amount = attrs.get("amount", self.instance.amount if self.instance else None)
+
+        if amount is None:
+            return attrs
+        if amount <= Decimal("0"):
+            raise serializers.ValidationError({"amount": "Loan payment amount must be greater than zero."})
+        if loan.status == Loan.Status.WRITTEN_OFF:
+            raise serializers.ValidationError({"loanId": "Written off loans cannot receive payments."})
+
+        already_paid = loan.payments.all()
+        if self.instance:
+            already_paid = already_paid.exclude(pk=self.instance.pk)
+        remaining = (loan.total_due - sum((payment.amount for payment in already_paid), start=Decimal("0"))).quantize(Decimal("0.01"))
+        if amount > remaining:
+            raise serializers.ValidationError({"amount": f"Payment cannot exceed the outstanding balance of {remaining}."})
+        return attrs
 
 
 class LoanSerializer(serializers.ModelSerializer):

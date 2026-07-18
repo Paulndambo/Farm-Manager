@@ -725,12 +725,17 @@ function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, 
   const openHealth = healthEvents.filter(h=>!h.resolved).length;
   const dueVaccinations = vaccinations.filter(v=>{ const s=getVaxStatus(v.nextDue); return s.tone==="warning"||s.tone==="danger"; }).length;
   const lowFeed = feedItems.filter(f=>getFeedStatus(f).tone!=="success").length;
-  const totalRevenue = (sales||[]).reduce((s,x)=>s+x.amount,0);
-  const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0);
+  const loanPayments = (loans||[]).flatMap(loan=>(loan.payments||[]).map(payment=>({...payment,loan})));
+  const loanIncome = (loans||[]).reduce((s,x)=>s+x.principalAmount,0);
+  const loanExpense = loanPayments.reduce((s,x)=>s+x.amount,0);
+  const totalRevenue = (sales||[]).reduce((s,x)=>s+x.amount,0) + loanIncome;
+  const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0) + loanExpense;
   const netProfit = totalRevenue - totalExpenses;
   const thisMonthKey = monthKey(todayStr());
-  const monthRevenue = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
-  const monthExpenses = (expenses||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthRevenue = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
+    + (loans||[]).filter(x=>monthKey(x.issueDate)===thisMonthKey).reduce((s,x)=>s+x.principalAmount,0);
+  const monthExpenses = (expenses||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
+    + loanPayments.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthNet = monthRevenue - monthExpenses;
   const outstandingDebt = (loans||[]).reduce((s,x)=>s+x.outstandingBalance,0);
   const receivableOutstanding = (invoices||[]).filter(i=>i.direction==="Receivable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
@@ -1757,41 +1762,50 @@ function LoanForm({ onSubmit, onClose }) {
 
 function LoanPaymentForm({ loans, selectedLoanId, onSubmit, onClose }) {
   const payableLoans = loans.filter(l=>l.outstandingBalance > 0 && l.status !== "Written off");
-  const initialLoanId = selectedLoanId || payableLoans[0]?.id || loans[0]?.id || "";
+  const selectedPayableLoan = payableLoans.find(l=>String(l.id)===String(selectedLoanId));
+  const initialLoanId = selectedPayableLoan?.id || payableLoans[0]?.id || "";
   const [form, setForm] = useState({
     loanId: initialLoanId, date:todayStr(), amount:"", method:"", reference:"", notes:"",
   });
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
-  const selected = loans.find(l=>String(l.id)===String(form.loanId));
+  const selected = payableLoans.find(l=>String(l.id)===String(form.loanId));
+  const amount = parseFloat(form.amount) || 0;
+  const exceedsOutstanding = selected && amount > selected.outstandingBalance;
 
   if (!loans.length) return (
     <div><p className="confirm-body">Add a loan before recording a loan payment.</p>
+      <div className="form-actions"><button className="btn btn--ghost" onClick={onClose}>Close</button></div></div>
+  );
+  if (!payableLoans.length) return (
+    <div><p className="confirm-body">There are no loans with an outstanding balance to pay.</p>
       <div className="form-actions"><button className="btn btn--ghost" onClick={onClose}>Close</button></div></div>
   );
 
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.loanId || !form.amount) return;
+    if (!selected || exceedsOutstanding || amount <= 0) return;
     onSubmit({
       ...form,
-      amount: parseFloat(form.amount) || 0,
+      amount,
     });
   }
 
   return (
     <form onSubmit={handleSubmit}>
       <div className="form-grid">
-        <label className="span-2">Loan *<select value={form.loanId} onChange={set("loanId")}>{loans.map(l=><option key={l.id} value={l.id}>{l.lender} - {l.purpose}</option>)}</select></label>
+        <label className="span-2">Loan *<select value={form.loanId} onChange={set("loanId")}>{payableLoans.map(l=><option key={l.id} value={l.id}>{l.lender} - {l.purpose}</option>)}</select></label>
         <label>Date<input type="date" value={form.date} onChange={set("date")} max={todayStr()} required/></label>
-        <label>Amount paid *<input type="number" min="0" step="0.01" value={form.amount} onChange={set("amount")} placeholder={selected?`Outstanding ${currency(selected.outstandingBalance)}`:""} required/></label>
+        <label>Amount paid *<input type="number" min="0.01" max={selected?.outstandingBalance || undefined} step="0.01" value={form.amount} onChange={set("amount")} placeholder={selected?`Outstanding ${currency(selected.outstandingBalance)}`:""} required/></label>
         <label>Method<input value={form.method} onChange={set("method")} placeholder="e.g. M-Pesa, bank"/></label>
         <label>Reference<input value={form.reference} onChange={set("reference")} placeholder="Receipt or transaction ID"/></label>
         <label className="span-2">Notes<textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="Installment notes..."/></label>
       </div>
       {selected && <p className="muted small profile-note">Outstanding before this payment: <span className="mono">{currency(selected.outstandingBalance)}</span></p>}
+      {exceedsOutstanding && <p className="form-error">Payment cannot exceed the outstanding balance of {currency(selected.outstandingBalance)}.</p>}
       <div className="form-actions">
         <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
-        <button type="submit" className="btn btn--primary"><Receipt size={15}/>Record payment</button>
+        <button type="submit" className="btn btn--primary" disabled={!selected || amount <= 0 || exceedsOutstanding}><Receipt size={15}/>Record payment</button>
       </div>
     </form>
   );
@@ -1840,22 +1854,28 @@ function StatementPage({ animals, sales, expenses, loans, invoices }) {
   const activeHerdValue = activeAnimals.reduce((sum,a)=>sum+(Number(a.currentValue)||0),0);
   const purchaseBasis = animals.reduce((sum,a)=>sum+(Number(a.purchaseCost)||0),0);
   const periodPurchaseCost = periodPurchased.reduce((sum,a)=>sum+(Number(a.purchaseCost)||0),0);
-  const periodRevenue = periodSales.reduce((sum,s)=>sum+s.amount,0);
-  const periodExpenseTotal = periodExpenses.reduce((sum,e)=>sum+e.amount,0);
-  const periodOperatingProfit = periodRevenue - periodExpenseTotal;
   const totalLoanPrincipal = loans.reduce((sum,l)=>sum+l.principalAmount,0);
   const outstandingDebt = loans.reduce((sum,l)=>sum+l.outstandingBalance,0);
   const periodLoanPrincipal = periodLoans.reduce((sum,l)=>sum+l.principalAmount,0);
   const periodDebtPaid = periodLoanPayments.reduce((sum,p)=>sum+p.amount,0);
+  const periodRevenue = periodSales.reduce((sum,s)=>sum+s.amount,0) + periodLoanPrincipal;
+  const periodExpenseTotal = periodExpenses.reduce((sum,e)=>sum+e.amount,0) + periodDebtPaid;
+  const periodOperatingProfit = periodRevenue - periodExpenseTotal;
   const receivableOutstanding = invoices.filter(i=>i.direction==="Receivable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
   const payableOutstanding = invoices.filter(i=>i.direction==="Payable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
   const netPosition = activeHerdValue + receivableOutstanding - payableOutstanding - outstandingDebt;
   const roi = purchaseBasis > 0 ? ((herdValue - purchaseBasis + periodOperatingProfit) / purchaseBasis) * 100 : null;
-  const expenseByCategory = Object.entries(periodExpenses.reduce((acc,e)=>({...acc,[e.category]:(acc[e.category]||0)+e.amount}),{}))
+  const expenseByCategory = Object.entries({
+      ...periodExpenses.reduce((acc,e)=>({...acc,[e.category]:(acc[e.category]||0)+e.amount}),{}),
+      ...(periodDebtPaid ? {"Loan payments": periodDebtPaid} : {}),
+    })
     .map(([category,total])=>({category,total}))
     .sort((a,b)=>b.total-a.total)
     .slice(0,6);
-  const salesByType = Object.entries(periodSales.reduce((acc,s)=>({...acc,[s.type]:(acc[s.type]||0)+s.amount}),{}))
+  const salesByType = Object.entries({
+      ...periodSales.reduce((acc,s)=>({...acc,[s.type]:(acc[s.type]||0)+s.amount}),{}),
+      ...(periodLoanPrincipal ? {"Loan proceeds": periodLoanPrincipal} : {}),
+    })
     .map(([type,total])=>({type,total}))
     .sort((a,b)=>b.total-a.total)
     .slice(0,6);
@@ -1949,17 +1969,26 @@ function StatementPage({ animals, sales, expenses, loans, invoices }) {
 }
 
 function FinancesPage({ sales, expenses, loans, onNavigate }) {
-  const totalRevenue    = sales.reduce((s,x)=>s+x.amount,0);
-  const totalExpenses   = expenses.reduce((s,x)=>s+x.amount,0);
+  const loanPayments    = useMemo(()=>loans.flatMap(loan=>(loan.payments||[]).map(payment=>({...payment,loan}))),[loans]);
+  const loanDisbursements = useMemo(()=>loans.map(loan=>({
+    id: loan.id,
+    date: loan.issueDate,
+    amount: loan.principalAmount,
+    description: `Loan received - ${loan.lender}`,
+    loan,
+  })),[loans]);
+  const totalRevenue    = sales.reduce((s,x)=>s+x.amount,0) + loanDisbursements.reduce((s,x)=>s+x.amount,0);
+  const totalExpenses   = expenses.reduce((s,x)=>s+x.amount,0) + loanPayments.reduce((s,x)=>s+x.amount,0);
   const netProfit       = totalRevenue - totalExpenses;
   const margin          = totalRevenue>0 ? ((netProfit/totalRevenue)*100).toFixed(1) : null;
   const outstandingDebt = loans.reduce((s,x)=>s+x.outstandingBalance,0);
-  const loanPayments    = loans.flatMap(loan=>(loan.payments||[]).map(payment=>({...payment,loan})));
 
   const now = todayStr();
   const thisMonthKey = monthKey(now);
-  const monthRevenue  = sales.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
-  const monthExpenses = expenses.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthRevenue  = sales.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
+    + loanDisbursements.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthExpenses = expenses.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
+    + loanPayments.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthLoanPayments = loanPayments.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthProfit   = monthRevenue - monthExpenses;
 
@@ -1968,27 +1997,32 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
     const buckets = {};
     sales.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].rev+=x.amount; }});
     expenses.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].exp+=x.amount; }});
+    loanDisbursements.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].rev+=x.amount; }});
+    loanPayments.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].exp+=x.amount; }});
     return Object.entries(buckets).sort((a,b)=>a[0]<b[0]?-1:1).slice(-8)
       .map(([k,v])=>({ label:monthLabel(k), revenue:Math.round(v.rev), expenses:Math.round(v.exp), profit:Math.round(v.rev-v.exp) }));
-  },[sales,expenses]);
+  },[sales,expenses,loanDisbursements,loanPayments]);
 
   // Expense by category pie
   const expCatData = useMemo(()=>{
     const c={};
     expenses.forEach(x=>{ c[x.category]=(c[x.category]||0)+x.amount; });
+    loanPayments.forEach(x=>{ c["Loan payments"]=(c["Loan payments"]||0)+x.amount; });
     return Object.entries(c).map(([name,value])=>({name,value:Math.round(value)})).sort((a,b)=>b.value-a.value);
-  },[expenses]);
+  },[expenses,loanPayments]);
 
   // Revenue by type pie
   const revTypeData = useMemo(()=>{
     const c={};
     sales.forEach(x=>{ c[x.type]=(c[x.type]||0)+x.amount; });
+    loanDisbursements.forEach(x=>{ c["Loan proceeds"]=(c["Loan proceeds"]||0)+x.amount; });
     return Object.entries(c).map(([name,value])=>({name,value:Math.round(value)})).sort((a,b)=>b.value-a.value);
-  },[sales]);
+  },[sales,loanDisbursements]);
 
   const recentTx = [
     ...sales.map(x=>({...x,_kind:"sale"})),
     ...expenses.map(x=>({...x,_kind:"expense"})),
+    ...loanDisbursements.map(x=>({...x,_kind:"loan_income"})),
     ...loanPayments.map(x=>({...x,_kind:"loan_payment",description:`Loan payment - ${x.loan.lender}`})),
   ].sort((a,b)=>a.date<b.date?1:-1).slice(0,10);
 
@@ -2104,11 +2138,11 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
               <tbody>
                 {recentTx.map(tx=>(
                   <tr key={`${tx._kind}-${tx.id}`}>
-                    <td data-label="Type"><Badge tone={tx._kind==="sale"?"success":"danger"}>{tx._kind==="sale"?"Revenue":tx._kind==="loan_payment"?"Loan payment":"Expense"}</Badge></td>
+                    <td data-label="Type"><Badge tone={tx._kind==="sale"||tx._kind==="loan_income"?"success":"danger"}>{tx._kind==="sale"?"Revenue":tx._kind==="loan_income"?"Loan income":tx._kind==="loan_payment"?"Loan payment":"Expense"}</Badge></td>
                     <td data-label="Description">{tx.description}</td>
                     <td data-label="Date" className="mono">{formatDate(tx.date)}</td>
-                    <td data-label="Amount" className={`mono ${tx._kind==="sale"?"trend-up":"trend-down"}`}>
-                      {tx._kind==="sale"?"+":"-"}{currency(tx.amount)}
+                    <td data-label="Amount" className={`mono ${tx._kind==="sale"||tx._kind==="loan_income"?"trend-up":"trend-down"}`}>
+                      {tx._kind==="sale"||tx._kind==="loan_income"?"+":"-"}{currency(tx.amount)}
                     </td>
                   </tr>
                 ))}

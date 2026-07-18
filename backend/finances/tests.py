@@ -261,3 +261,45 @@ class ContractInvoiceTests(TestCase):
         self.assertEqual(summary_response.data["loans"]["totalDebt"], "112500.00")
         self.assertEqual(summary_response.data["loans"]["totalPaid"], "15000.00")
         self.assertEqual(summary_response.data["loans"]["outstandingDebt"], "97500.00")
+        self.assertEqual(summary_response.data["totalRevenue"], "100000.00")
+        self.assertEqual(summary_response.data["totalExpenses"], "15000.00")
+        self.assertEqual(summary_response.data["revenueByType"]["Loan proceeds"], "100000.00")
+        self.assertEqual(summary_response.data["expensesByCategory"]["Loan payments"], "15000.00")
+
+        overpayment_response = self.client.post(
+            "/api/loan-payments/",
+            {
+                "loanId": loan_response.data["id"],
+                "date": "2026-09-01",
+                "amount": "97500.01",
+            },
+            format="json",
+        )
+        self.assertEqual(overpayment_response.status_code, 400)
+
+        final_payment_response = self.client.post(
+            "/api/loan-payments/",
+            {
+                "loanId": loan_response.data["id"],
+                "date": "2026-09-01",
+                "amount": "97500.00",
+            },
+            format="json",
+        )
+        self.assertEqual(final_payment_response.status_code, 201)
+
+        paid_loan_response = self.client.get("/api/loans/")
+        self.assertEqual(paid_loan_response.data[0]["totalPaid"], "112500.00")
+        self.assertEqual(paid_loan_response.data[0]["outstandingBalance"], "0.00")
+        self.assertEqual(paid_loan_response.data[0]["status"], Loan.Status.PAID)
+
+        blocked_after_paid_response = self.client.post(
+            "/api/loan-payments/",
+            {
+                "loanId": loan_response.data["id"],
+                "date": "2026-10-01",
+                "amount": "1.00",
+            },
+            format="json",
+        )
+        self.assertEqual(blocked_after_paid_response.status_code, 400)

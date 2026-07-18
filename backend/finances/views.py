@@ -102,6 +102,22 @@ class LoanPaymentViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return LoanPayment.objects.filter(loan__farm=self.request.user.farm).select_related("loan")
 
+    def perform_create(self, serializer):
+        payment = serializer.save()
+        payment.loan.refresh_payment_status()
+
+    def perform_update(self, serializer):
+        previous_loan = self.get_object().loan
+        payment = serializer.save()
+        previous_loan.refresh_payment_status()
+        if payment.loan_id != previous_loan.id:
+            payment.loan.refresh_payment_status()
+
+    def perform_destroy(self, instance):
+        loan = instance.loan
+        instance.delete()
+        loan.refresh_payment_status()
+
 
 @api_view(["GET"])
 @permission_classes([IsActiveFarmUser])
@@ -137,13 +153,15 @@ def finance_summary(request):
 
 
 def build_finance_summary(farm):
-    total_revenue = Sale.objects.filter(farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
-    total_expenses = Expense.objects.filter(farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    total_sales = Sale.objects.filter(farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
+    operating_expenses = Expense.objects.filter(farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
     loans = Loan.objects.filter(farm=farm).prefetch_related("payments")
     total_principal = sum((loan.principal_amount for loan in loans), start=Decimal("0"))
     total_debt = sum((loan.total_due for loan in loans), start=Decimal("0"))
     total_loan_paid = LoanPayment.objects.filter(loan__farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
     outstanding_debt = max(total_debt - total_loan_paid, Decimal("0"))
+    total_revenue = total_sales + total_principal
+    total_expenses = operating_expenses + total_loan_paid
     net = total_revenue - total_expenses
     margin = (net / total_revenue * Decimal("100")) if total_revenue else Decimal("0")
 
@@ -155,12 +173,20 @@ def build_finance_summary(farm):
         row["category"]: money(row["total"])
         for row in Expense.objects.filter(farm=farm).values("category").annotate(total=Sum("amount")).order_by("category")
     }
+    if total_principal:
+        revenue_by_type["Loan proceeds"] = money(total_principal)
+    if total_loan_paid:
+        expenses_by_category["Loan payments"] = money(total_loan_paid)
 
     monthly = defaultdict(lambda: {"revenue": Decimal("0"), "expenses": Decimal("0")})
     for row in Sale.objects.filter(farm=farm).annotate(month=TruncMonth("date")).values("month").annotate(total=Sum("amount")):
         monthly[month_key(row["month"])]["revenue"] = row["total"] or Decimal("0")
     for row in Expense.objects.filter(farm=farm).annotate(month=TruncMonth("date")).values("month").annotate(total=Sum("amount")):
         monthly[month_key(row["month"])]["expenses"] = row["total"] or Decimal("0")
+    for row in Loan.objects.filter(farm=farm).annotate(month=TruncMonth("issue_date")).values("month").annotate(total=Sum("principal_amount")):
+        monthly[month_key(row["month"])]["revenue"] += row["total"] or Decimal("0")
+    for row in LoanPayment.objects.filter(loan__farm=farm).annotate(month=TruncMonth("date")).values("month").annotate(total=Sum("amount")):
+        monthly[month_key(row["month"])]["expenses"] += row["total"] or Decimal("0")
 
     return {
         "totalRevenue": money(total_revenue),
