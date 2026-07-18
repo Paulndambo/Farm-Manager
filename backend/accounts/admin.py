@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import User
+from .models import User, UserAction
 
 
 @admin.register(User)
@@ -17,3 +17,12 @@ class FarmUserAdmin(UserAdmin):
     add_fieldsets = UserAdmin.add_fieldsets + (
         ("Farm access", {"fields": ("email", "gender", "phone_number", "farm", "role", "status")}),
     )
+
+
+@admin.register(UserAction)
+class UserActionAdmin(admin.ModelAdmin):
+    list_display = ("created_at", "farm", "user", "action_type", "description")
+    list_filter = ("action_type", "farm", "created_at")
+    search_fields = ("description", "user__email", "user__first_name", "user__last_name", "farm__name")
+    readonly_fields = ("created_at",)
+    ordering = ("-created_at",)

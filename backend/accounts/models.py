@@ -48,3 +48,23 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.display_name
+
+
+class UserAction(models.Model):
+    class ActionType(models.TextChoices):
+        CREATE = "create", "Create"
+        EDIT = "edit", "Edit"
+        DELETE = "delete", "Delete"
+
+    farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="user_actions")
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="actions")
+    action_type = models.CharField(max_length=10, choices=ActionType.choices)
+    description = models.CharField(max_length=240)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        actor = self.user.display_name if self.user else "Unknown user"
+        return f"{actor}: {self.description}"

@@ -4,6 +4,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 from farms.models import Farm
+from .models import UserAction
 
 User = get_user_model()
 
@@ -59,6 +60,18 @@ class UserSerializer(serializers.ModelSerializer):
             instance.set_password(password)
         instance.save()
         return instance
+
+
+class UserActionSerializer(serializers.ModelSerializer):
+    userId = serializers.IntegerField(source="user_id", read_only=True)
+    userName = serializers.CharField(source="user.display_name", read_only=True, default="")
+    userEmail = serializers.EmailField(source="user.email", read_only=True, default="")
+    actionType = serializers.CharField(source="action_type", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = UserAction
+        fields = ["id", "userId", "userName", "userEmail", "actionType", "description", "createdAt"]
 
 
 class CurrentUserSerializer(UserSerializer):

@@ -7,7 +7,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .permissions import IsActiveFarmUser, IsAdminRole
-from .serializers import CurrentUserSerializer, EmailTokenObtainPairSerializer, FarmRegistrationSerializer, UserSerializer
+from .models import UserAction
+from .serializers import CurrentUserSerializer, EmailTokenObtainPairSerializer, FarmRegistrationSerializer, UserActionSerializer, UserSerializer
 
 User = get_user_model()
 
@@ -60,3 +61,18 @@ class UserViewSet(viewsets.ModelViewSet):
         user.is_active = user.status == User.Status.ACTIVE
         user.save(update_fields=["status", "is_active"])
         return Response(self.get_serializer(user).data)
+
+
+class UserActionViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = UserActionSerializer
+    permission_classes = [IsAdminRole]
+
+    def get_queryset(self):
+        queryset = UserAction.objects.filter(farm=self.request.user.farm).select_related("user")
+        user_id = self.request.query_params.get("userId")
+        action_type = self.request.query_params.get("actionType")
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        if action_type:
+            queryset = queryset.filter(action_type=action_type)
+        return queryset

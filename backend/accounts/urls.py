@@ -2,10 +2,11 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import EmailTokenObtainPairView, UserViewSet, me, register_farm
+from .views import EmailTokenObtainPairView, UserActionViewSet, UserViewSet, me, register_farm
 
 router = DefaultRouter()
 router.register("users", UserViewSet, basename="user")
+router.register("user-actions", UserActionViewSet, basename="user-action")
 
 urlpatterns = [
     path("auth/login/", EmailTokenObtainPairView.as_view(), name="token_obtain_pair"),

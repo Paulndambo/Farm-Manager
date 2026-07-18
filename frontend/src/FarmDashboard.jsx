@@ -3,7 +3,7 @@ import {
   LayoutDashboard, PawPrint, Syringe, TrendingUp, Wheat,
   Plus, X, Menu, Search, Trash2, CheckCircle2, ArrowUp, ArrowDown,
   Package, ChevronRight, Sprout, Users, UserPlus, LogOut, Ban,
-  Pencil, Lock, Activity, Heart, FileText,
+  Pencil, Lock, Activity, Heart, FileText, ClipboardList,
   Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign, Settings, Printer,
 } from "lucide-react";
 import {
@@ -30,6 +30,7 @@ const INVOICE_DIRECTIONS = ["Payable","Receivable"];
 const INVOICE_STATUSES = ["Draft","Issued","Part paid","Paid","Overdue","Cancelled"];
 const LOAN_STATUSES = ["Active","Paid","Defaulted","Written off"];
 const LOAN_PAYMENT_FREQUENCIES = ["Weekly","Monthly","Quarterly","Seasonal","Flexible"];
+const USER_ACTION_TYPES = ["create","edit","delete"];
 const MONTH_OPTIONS = [
   { value:1, label:"January" }, { value:2, label:"February" }, { value:3, label:"March" },
   { value:4, label:"April" }, { value:5, label:"May" }, { value:6, label:"June" },
@@ -65,6 +66,7 @@ const PAGE_TITLES = {
   sales:        "Sales & Revenue",
   expenses:     "Expenses",
   users:        "User Management",
+  userActions:  "User Actions",
   profile:      "Profile",
 };
 
@@ -306,12 +308,32 @@ function AnimalForm({ onSubmit, onClose, initial }) {
   );
 }
 
+function SelectedAnimalField({ animal }) {
+  return (
+    <div className="span-2 fixed-animal-field">
+      <span className="form-label">Animal</span>
+      <div>
+        {animal ? (
+          <>
+            <EarTag>{animal.tagId}</EarTag>
+            <strong>{animal.name || "Unnamed"}</strong>
+            <span className="muted small"> {animal.species}{animal.breed ? ` - ${animal.breed}` : ""}</span>
+          </>
+        ) : (
+          <span className="muted">Selected animal</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function VaccinationForm({ animals, defaultAnimalId, onSubmit, onClose }) {
   const [form, setForm] = useState({
     animalId: defaultAnimalId || (animals[0]?.id || ""),
     vaccine:"", dateGiven:todayStr(), nextDue:"", administeredBy:"", batchNo:"", notes:"",
   });
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  const lockedAnimal = defaultAnimalId ? animals.find(a=>String(a.id)===String(defaultAnimalId)) : null;
 
   if (!animals.length) return (
     <div><p className="confirm-body">Add at least one animal before recording a vaccination.</p>
@@ -321,11 +343,13 @@ function VaccinationForm({ animals, defaultAnimalId, onSubmit, onClose }) {
   return (
     <form onSubmit={e=>{e.preventDefault();if(!form.animalId||!form.vaccine.trim())return;onSubmit(form);}}>
       <div className="form-grid">
-        <label className="span-2">Animal *
-          <select value={form.animalId} onChange={set("animalId")}>
-            {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""} ({a.species})</option>)}
-          </select>
-        </label>
+        {defaultAnimalId ? <SelectedAnimalField animal={lockedAnimal}/> : (
+          <label className="span-2">Animal *
+            <select value={form.animalId} onChange={set("animalId")}>
+              {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""} ({a.species})</option>)}
+            </select>
+          </label>
+        )}
         <label className="span-2">Vaccine / treatment *<input value={form.vaccine} onChange={set("vaccine")} placeholder="e.g. Foot-and-mouth booster" required/></label>
         <label>Date administered<input type="date" value={form.dateGiven} onChange={set("dateGiven")} max={todayStr()}/></label>
         <label>Next due<input type="date" value={form.nextDue} onChange={set("nextDue")}/></label>
@@ -347,6 +371,7 @@ function GrowthForm({ animals, defaultAnimalId, onSubmit, onClose }) {
     date:todayStr(), weightKg:"", bodyCondition:"", notes:"",
   });
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  const lockedAnimal = defaultAnimalId ? animals.find(a=>String(a.id)===String(defaultAnimalId)) : null;
 
   if (!animals.length) return (
     <div><p className="confirm-body">Add at least one animal before logging a growth record.</p>
@@ -356,11 +381,13 @@ function GrowthForm({ animals, defaultAnimalId, onSubmit, onClose }) {
   return (
     <form onSubmit={e=>{e.preventDefault();if(!form.weightKg)return;onSubmit({...form,weightKg:parseFloat(form.weightKg)});}}>
       <div className="form-grid">
-        <label className="span-2">Animal *
-          <select value={form.animalId} onChange={set("animalId")}>
-            {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""}</option>)}
-          </select>
-        </label>
+        {defaultAnimalId ? <SelectedAnimalField animal={lockedAnimal}/> : (
+          <label className="span-2">Animal *
+            <select value={form.animalId} onChange={set("animalId")}>
+              {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""}</option>)}
+            </select>
+          </label>
+        )}
         <label>Date *<input type="date" value={form.date} onChange={set("date")} max={todayStr()} required/></label>
         <label>Weight (kg) *<input type="number" min="0" step="0.1" value={form.weightKg} onChange={set("weightKg")} required/></label>
         <label className="span-2">Body condition score (1–5)
@@ -386,6 +413,7 @@ function HealthEventForm({ animals, defaultAnimalId, onSubmit, onClose }) {
     vetName:"", followUpDate:"", resolved:false,
   });
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  const lockedAnimal = defaultAnimalId ? animals.find(a=>String(a.id)===String(defaultAnimalId)) : null;
 
   if (!animals.length) return (
     <div><p className="confirm-body">Add at least one animal to log a health event.</p>
@@ -395,11 +423,13 @@ function HealthEventForm({ animals, defaultAnimalId, onSubmit, onClose }) {
   return (
     <form onSubmit={e=>{e.preventDefault();if(!form.description.trim())return;onSubmit({...form,resolved:form.resolved==="true"||form.resolved===true});}}>
       <div className="form-grid">
-        <label className="span-2">Animal *
-          <select value={form.animalId} onChange={set("animalId")}>
-            {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""} ({a.species})</option>)}
-          </select>
-        </label>
+        {defaultAnimalId ? <SelectedAnimalField animal={lockedAnimal}/> : (
+          <label className="span-2">Animal *
+            <select value={form.animalId} onChange={set("animalId")}>
+              {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""} ({a.species})</option>)}
+            </select>
+          </label>
+        )}
         <label>Event type
           <select value={form.type} onChange={set("type")}>
             {HEALTH_EVENT_TYPES.map(t=><option key={t}>{t}</option>)}
@@ -1323,6 +1353,56 @@ function UsersPage({ users, currentUser, onAdd, onEdit, onToggleStatus, onDelete
         </table>
       </div>
       {confirmId&&<ConfirmDialog title="Delete user" body="This permanently removes their access." onCancel={()=>setConfirmId(null)} onConfirm={()=>{onDelete(confirmId);setConfirmId(null);}}/>}
+    </div>
+  );
+}
+
+function UserActionsPage({ actions, users }) {
+  const [userFilter, setUserFilter] = useState("All");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const rows = actions.filter(action =>
+    (userFilter === "All" || String(action.userId || "") === userFilter) &&
+    (typeFilter === "All" || action.actionType === typeFilter)
+  );
+  const actionTone = type => type === "create" ? "success" : type === "delete" ? "danger" : "warning";
+  const actionLabel = type => type ? type[0].toUpperCase() + type.slice(1) : "-";
+  const formatDateTime = value => value ? new Date(value).toLocaleString(undefined,{dateStyle:"medium",timeStyle:"short"}) : "-";
+
+  return (
+    <div className="page">
+      <div className="toolbar">
+        <select value={userFilter} onChange={e=>setUserFilter(e.target.value)} aria-label="Filter user actions by user">
+          <option value="All">All users</option>
+          {users.map(user=><option key={user.id} value={String(user.id)}>{user.name}</option>)}
+        </select>
+        <select value={typeFilter} onChange={e=>setTypeFilter(e.target.value)} aria-label="Filter user actions by action type">
+          <option value="All">All action types</option>
+          {USER_ACTION_TYPES.map(type=><option key={type} value={type}>{actionLabel(type)}</option>)}
+        </select>
+      </div>
+
+      {actions.length===0 ? (
+        <EmptyState icon={ClipboardList} title="No user actions recorded" body="Create, edit, and delete actions will appear here as the farm team uses the platform."/>
+      ) : rows.length===0 ? <p className="muted">No user actions match those filters.</p> : (
+        <div className="table-wrap responsive-table-wrap">
+          <table>
+            <thead><tr><th>User</th><th>Action</th><th>Description</th><th>Time</th></tr></thead>
+            <tbody>
+              {rows.map(action=>(
+                <tr key={action.id}>
+                  <td data-label="User">
+                    <strong>{action.userName}</strong>
+                    {action.userEmail && <div className="muted small mono">{action.userEmail}</div>}
+                  </td>
+                  <td data-label="Action"><Badge tone={actionTone(action.actionType)}>{actionLabel(action.actionType)}</Badge></td>
+                  <td data-label="Description">{action.description}</td>
+                  <td data-label="Time" className="mono">{formatDateTime(action.createdAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -2465,6 +2545,7 @@ const NAV_SECTIONS = [
   { label:"Administration", items:[
     {key:"profile", label:"Profile", icon:Settings},
     {key:"users", label:"Users", icon:Users, adminOnly:true},
+    {key:"userActions", label:"User Actions", icon:ClipboardList, adminOnly:true},
   ]},
 ];
 
@@ -2485,6 +2566,7 @@ export default function FarmApp() {
   const [invoices, setInvoices]         = useState([]);
   const [loans, setLoans]               = useState([]);
   const [users, setUsers]               = useState([]);
+  const [userActions, setUserActions]   = useState([]);
   const [currentUser, setCurrentUser]   = useState(null);
   const [farm, setFarm]                 = useState(null);
   const [apiError, setApiError]         = useState("");
@@ -2533,6 +2615,7 @@ export default function FarmApp() {
     setHealthEvents(data.healthEvents); setFeedItems(data.feedItems);
     setSales(data.sales); setExpenses(data.expenses); setPartners(data.partners);
     setContracts(data.contracts); setInvoices(data.invoices); setLoans(data.loans); setUsers(data.users);
+    setUserActions(data.userActions);
   }
 
   async function refreshBackendData() {
@@ -2668,6 +2751,7 @@ export default function FarmApp() {
               {activeTab==="expenses"     && <ExpensesPage expenses={expenses} onAdd={()=>setShowExpenseForm(true)} onDelete={deleteExpense}/>}
               {activeTab==="profile"      && <ProfilePage currentUser={currentUser} farm={farm || currentUser.farm} onSaveFarm={saveFarm}/>}
               {activeTab==="users" && currentUser.role==="Admin" && <UsersPage users={users} currentUser={currentUser} onAdd={()=>setShowAddUser(true)} onEdit={setEditingUserId} onToggleStatus={toggleUser} onDelete={deleteUser}/>}
+              {activeTab==="userActions" && currentUser.role==="Admin" && <UserActionsPage actions={userActions} users={users}/>}
             </div>
           </main>
         </div>
@@ -2867,6 +2951,8 @@ tr.clickable:hover { background:#F3EDDD; }
 .form-grid input:focus,.form-grid select:focus,.form-grid textarea:focus { border-color:var(--rust); }
 .form-grid input:disabled { opacity:.5;cursor:not-allowed; }
 .form-grid textarea { resize:vertical; }
+.form-label { display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px; }
+.fixed-animal-field > div { display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--cream);color:var(--ink);font-size:13.5px; }
 .form-actions { display:flex;justify-content:flex-end;gap:8px;margin-top:18px; }
 .form-error { background:#F4DCD6;color:var(--rust);font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:7px;margin-top:10px; }
 .form-success { background:#E4ECE2;color:var(--green-soft);font-size:12.5px;font-weight:600;padding:8px 10px;border-radius:7px;margin-top:10px; }

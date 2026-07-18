@@ -134,6 +134,17 @@ function normalizeLoan(loan) {
   };
 }
 
+function normalizeUserAction(action) {
+  return {
+    ...action,
+    userId: action.userId,
+    userName: action.userName || "Unknown user",
+    userEmail: action.userEmail || "",
+    actionType: action.actionType,
+    createdAt: action.createdAt,
+  };
+}
+
 function nullIfBlank(value) {
   return value === "" ? null : value;
 }
@@ -168,7 +179,7 @@ export const api = {
   },
 
   async loadAll(currentUser) {
-    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, partners, contracts, invoices, loans, users] = await Promise.all([
+    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, partners, contracts, invoices, loans, users, userActions] = await Promise.all([
       request("/farm/"),
       request("/animals/"),
       request("/vaccinations/"),
@@ -182,6 +193,7 @@ export const api = {
       request("/invoices/"),
       request("/loans/"),
       currentUser?.role === "Admin" ? request("/users/") : Promise.resolve([]),
+      currentUser?.role === "Admin" ? request("/user-actions/") : Promise.resolve([]),
     ]);
 
     const normalizedUsers = users.map(normalizeUser);
@@ -200,6 +212,7 @@ export const api = {
       invoices: invoices.map(normalizeInvoice),
       loans: loans.map(normalizeLoan),
       users: normalizedUsers,
+      userActions: userActions.map(normalizeUserAction),
     };
   },
 
