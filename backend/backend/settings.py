@@ -192,7 +192,14 @@ AUTH_USER_MODEL = "accounts.User"
 # CORS configuration
 # ------------------------------------------------------------------
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://farmledger.co.ke",
+    "https://www.farmledger.co.ke",
+]
+
+CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOW_METHODS = [
     "DELETE",
@@ -213,6 +220,13 @@ CORS_ALLOW_HEADERS = [
     "user-agent",
     "x-csrftoken",
     "x-requested-with",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://farmledger.co.ke",
+    "https://www.farmledger.co.ke",
 ]
 # -------------------------------------------------------------------
 # Django REST Framework

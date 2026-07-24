@@ -87,7 +87,7 @@ class Invoice(models.Model):
     due_date = models.DateField(null=True, blank=True)
     description = models.CharField(max_length=240)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
-    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.ISSUED)
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -105,7 +105,7 @@ class Invoice(models.Model):
 class InvoiceItem(models.Model):
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="items")
     description = models.CharField(max_length=240)
-    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
+    quantity = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("1"))
     unit = models.CharField(max_length=40, blank=True)
     unit_price = models.DecimalField(max_digits=12, decimal_places=2)
     line_total = models.DecimalField(max_digits=12, decimal_places=2)
@@ -115,7 +115,7 @@ class InvoiceItem(models.Model):
         ordering = ["id"]
 
     def save(self, *args, **kwargs):
-        self.line_total = (self.quantity or 0) * (self.unit_price or 0)
+        self.line_total = (self.quantity or Decimal("0")) * (self.unit_price or Decimal("0"))
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -140,7 +140,7 @@ class Loan(models.Model):
     lender = models.CharField(max_length=180)
     purpose = models.CharField(max_length=240)
     principal_amount = models.DecimalField(max_digits=12, decimal_places=2)
-    interest_rate = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    interest_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0"))
     issue_date = models.DateField()
     due_date = models.DateField(null=True, blank=True)
     payment_frequency = models.CharField(
@@ -158,7 +158,7 @@ class Loan(models.Model):
 
     @property
     def total_due(self):
-        interest = self.principal_amount * (self.interest_rate or 0) / 100
+        interest = self.principal_amount * (self.interest_rate or Decimal("0")) / 100
         return (self.principal_amount + interest).quantize(Decimal("0.01"))
 
     @property

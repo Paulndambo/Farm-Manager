@@ -1,5 +1,5 @@
 from rest_framework import serializers
-
+from decimal import Decimal
 from .models import FeedAdjustment, FeedItem
 
 
@@ -45,6 +45,6 @@ class FeedAdjustmentSerializer(serializers.ModelSerializer):
 
 class AdjustStockSerializer(serializers.Serializer):
     mode = serializers.ChoiceField(choices=FeedAdjustment.Mode.choices)
-    quantityKg = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=0)
+    quantityKg = serializers.DecimalField(max_digits=12, decimal_places=2, min_value=Decimal("0"))
     note = serializers.CharField(required=False, allow_blank=True)
     createExpense = serializers.BooleanField(required=False, default=False)
