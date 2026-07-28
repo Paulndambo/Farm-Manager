@@ -26,7 +26,10 @@ async function request(path, options = {}) {
 
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
-    credentials: "include",
+    // Authentication uses the JWT Authorization header, not cross-site cookies.
+    // Omitting credentials also keeps requests compatible with API gateways that
+    // respond with Access-Control-Allow-Origin: *.
+    credentials: "omit",
     headers,
   });
 

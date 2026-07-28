@@ -199,7 +199,10 @@ CORS_ALLOWED_ORIGINS = [
     "https://www.farmledger.co.ke",
 ]
 
-CORS_ALLOW_CREDENTIALS = True
+# The API is authenticated with JWT bearer tokens rather than session cookies.
+# Keeping credentialed CORS disabled avoids invalid wildcard-origin responses
+# when the API is served through a proxy or hosting gateway.
+CORS_ALLOW_CREDENTIALS = False
 
 CORS_ALLOW_METHODS = [
     "DELETE",
