@@ -1,4 +1,6 @@
-const API_BASE_URL = "https://backend.wazaschool.co.ke/api";
+const API_BASE_URL = (
+  import.meta.env.VITE_BACKEND_BASE_URL || "https://backend.wazaschool.co.ke/api"
+).replace(/\/$/, "");
 const ACCESS_KEY = "farm_manager_access_token";
 const REFRESH_KEY = "farm_manager_refresh_token";
 
