@@ -5,12 +5,14 @@ import {
   Package, ChevronRight, Sprout, Users, UserPlus, LogOut, Ban,
   Pencil, Lock, Activity, Heart, FileText, ClipboardList,
   Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign, Settings, Printer,
+  CalendarDays, AlertTriangle, Clock3,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, PieChart, Pie, Cell, BarChart, Bar,
 } from "recharts";
 import { api } from "./api";
+import { downloadExpenseReceiptPdf, downloadInvoicePdf, downloadSaleReceiptPdf } from "./pdfDocuments";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SPECIES      = ["Cattle","Goat","Sheep","Pig","Chicken","Horse","Other"];
@@ -68,6 +70,7 @@ const PAGE_TITLES = {
   users:        "User Management",
   userActions:  "User Actions",
   profile:      "Profile",
+  planner:      "Farm Planner",
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -122,6 +125,10 @@ function currencyShort(n) {
 
 function monthKey(d)    { return (d||"").slice(0,7); }
 function monthLabel(ym) { const [y,m]=ym.split("-"); return new Date(+y,+m-1,1).toLocaleDateString("en-GB",{month:"short",year:"2-digit"}); }
+function daysUntil(d) {
+  if (!d) return null;
+  return Math.round((new Date(`${d}T00:00:00`) - new Date(`${todayStr()}T00:00:00`)) / 86400000);
+}
 
 function animalGain(a) {
   return (Number(a.currentValue) || 0) - (Number(a.purchaseCost) || 0);
@@ -2236,7 +2243,7 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
   );
 }
 
-function ContractsPage({ partners, contracts, invoices, onAddPartner, onAddContract, onAddInvoice, onDeletePartner, onDeleteContract, onDeleteInvoice }) {
+function ContractsPage({ partners, contracts, invoices, farm, onAddPartner, onAddContract, onAddInvoice, onDeletePartner, onDeleteContract, onDeleteInvoice }) {
   const [tab, setTab] = useState("invoices");
   const [confirm, setConfirm] = useState(null);
   const payable = invoices.filter(i=>i.direction==="Payable").reduce((s,i)=>s+Math.max(i.amount-i.amountPaid,0),0);
@@ -2310,7 +2317,10 @@ function ContractsPage({ partners, contracts, invoices, onAddPartner, onAddContr
               <td data-label="Invoice"><strong>{i.invoiceNumber}</strong><div className="muted small">{i.description}</div><div className="muted small">{i.items?.length||0} item{i.items?.length===1?"":"s"}</div></td><td data-label="Type"><Badge tone={i.direction==="Receivable"?"success":"danger"}>{i.direction}</Badge></td>
               <td data-label="Partner">{i.partnerName}</td><td data-label="Contract">{i.contractTitle||"-"}</td><td data-label="Issued" className="mono">{formatDate(i.issueDate)}</td><td data-label="Due" className="mono">{formatDate(i.dueDate)}</td>
               <td data-label="Amount" className="mono">{currency(i.amount)}</td><td data-label="Paid" className="mono">{currency(i.amountPaid)}</td><td data-label="Status"><Badge tone={invoiceTone(i.status)}>{i.status}</Badge></td>
-              <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"invoice",id:i.id})} aria-label="Delete invoice"><Trash2 size={15}/></button></td>
+              <td data-label="" className="actions-cell">
+                <button className="icon-btn" onClick={()=>downloadInvoicePdf(i,farm)} title="Download invoice PDF" aria-label="Download invoice PDF"><Printer size={15}/></button>
+                <button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"invoice",id:i.id})} aria-label="Delete invoice"><Trash2 size={15}/></button>
+              </td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -2419,7 +2429,7 @@ function LoansPage({ loans, onAddLoan, onAddPayment, onDeleteLoan, onDeletePayme
     </div>
   );
 }
-function SalesPage({ sales, onAdd, onDelete }) {
+function SalesPage({ sales, farm, onAdd, onDelete }) {
   const [query, setQuery]       = useState("");
   const [typeFilter, setTypeFilter] = useState("All");
   const [confirmId, setConfirmId] = useState(null);
@@ -2460,7 +2470,10 @@ function SalesPage({ sales, onAdd, onDelete }) {
                   <td data-label="Unit price" className="mono">{x.unitPrice?currency(x.unitPrice):"-"}</td>
                   <td data-label="Amount" className="mono trend-up">{currency(x.amount)}</td>
                   <td data-label="Buyer">{x.buyer||"-"}</td>
-                  <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
+                  <td data-label="" className="actions-cell">
+                    <button className="icon-btn" onClick={()=>downloadSaleReceiptPdf(x,farm)} title="Download sale receipt PDF" aria-label="Download sale receipt PDF"><Printer size={15}/></button>
+                    <button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2472,7 +2485,7 @@ function SalesPage({ sales, onAdd, onDelete }) {
   );
 }
 
-function ExpensesPage({ expenses, onAdd, onDelete }) {
+function ExpensesPage({ expenses, farm, onAdd, onDelete }) {
   const [query, setQuery]         = useState("");
   const [catFilter, setCatFilter] = useState("All");
   const [confirmId, setConfirmId] = useState(null);
@@ -2513,7 +2526,10 @@ function ExpensesPage({ expenses, onAdd, onDelete }) {
                   <td data-label="Amount" className="mono trend-down">{currency(x.amount)}</td>
                   <td data-label="Vendor">{x.vendor||"-"}</td>
                   <td data-label="Source"><span className="muted small">{x.autoLogged?"Auto-logged":"Manual"}</span></td>
-                  <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
+                  <td data-label="" className="actions-cell">
+                    <button className="icon-btn" onClick={()=>downloadExpenseReceiptPdf(x,farm)} title="Download expense receipt PDF" aria-label="Download expense receipt PDF"><Printer size={15}/></button>
+                    <button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(x.id)} aria-label="Delete"><Trash2 size={15}/></button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -2525,8 +2541,100 @@ function ExpensesPage({ expenses, onAdd, onDelete }) {
   );
 }
 
+function PlannerPage({ animals, vaccinations, healthEvents, feedItems, invoices, loans, contracts, onNavigate, onOpenAnimal }) {
+  const [windowDays, setWindowDays] = useState(30);
+  const [showCompleted, setShowCompleted] = useState(false);
+  const [completed, setCompleted] = useState(()=>{
+    try { return JSON.parse(localStorage.getItem("farm_planner_completed") || "{}"); }
+    catch { return {}; }
+  });
+  const tasks = useMemo(()=>{
+    const rows = [];
+    const add = task => {
+      const days = daysUntil(task.date);
+      if (days === null || days <= windowDays) rows.push({...task, days});
+    };
+    vaccinations.filter(v=>v.nextDue).forEach(v=>{
+      const animal=animals.find(a=>a.id===v.animalId);
+      add({id:`vax-${v.id}`,date:v.nextDue,type:"Vaccination",title:v.vaccine,detail:`${animal?.tagId||"Animal"}${animal?.name?` · ${animal.name}`:""}`,target:"vaccinations",animalId:v.animalId});
+    });
+    healthEvents.filter(h=>!h.resolved).forEach(h=>{
+      const animal=animals.find(a=>a.id===h.animalId);
+      add({id:`health-${h.id}`,date:h.followUpDate||h.date,type:"Health",title:h.description,detail:`${animal?.tagId||"Animal"}${h.followUpDate?" · follow-up":" · unresolved"}`,target:"livestock",animalId:h.animalId});
+    });
+    feedItems.filter(f=>getFeedStatus(f).tone!=="success").forEach(f=>rows.push({
+      id:`feed-${f.id}`,date:todayStr(),days:0,type:"Feed",title:`Restock ${f.feedType}`,detail:`${f.quantityKg} kg left · reorder at ${f.reorderLevel} kg`,target:"feed",
+    }));
+    invoices.filter(i=>!["Paid","Cancelled"].includes(i.status)&&i.dueDate).forEach(i=>add({
+      id:`invoice-${i.id}`,date:i.dueDate,type:i.direction==="Payable"?"Payment":"Collection",title:`${i.invoiceNumber} · ${i.partnerName}`,detail:`${currency(Math.max(i.amount-i.amountPaid,0))} outstanding`,target:"contracts",
+    }));
+    loans.filter(l=>l.status==="Active"&&l.dueDate).forEach(l=>add({
+      id:`loan-${l.id}`,date:l.dueDate,type:"Loan",title:l.lender,detail:`${currency(l.outstandingBalance)} outstanding`,target:"loans",
+    }));
+    contracts.filter(c=>c.status==="Active"&&c.endDate).forEach(c=>add({
+      id:`contract-${c.id}`,date:c.endDate,type:"Contract",title:c.title,detail:`${c.partnerName} · contract ending`,target:"contracts",
+    }));
+    return rows.sort((a,b)=>(a.days??9999)-(b.days??9999));
+  },[animals,vaccinations,healthEvents,feedItems,invoices,loans,contracts,windowDays]);
+  const visible = tasks.filter(t=>showCompleted||!completed[t.id]);
+  const overdue = tasks.filter(t=>t.days<0&&!completed[t.id]).length;
+  const dueSoon = tasks.filter(t=>t.days>=0&&t.days<=7&&!completed[t.id]).length;
+  const toggleDone = id => setCompleted(current=>{
+    const next={...current,[id]:!current[id]};
+    localStorage.setItem("farm_planner_completed",JSON.stringify(next));
+    return next;
+  });
+  const timing = task => task.days<0 ? `${Math.abs(task.days)}d overdue` : task.days===0 ? "Today" : task.days===1 ? "Tomorrow" : `In ${task.days} days`;
+  const tone = task => task.days<0?"danger":task.days<=7?"warning":"neutral";
+
+  return (
+    <div className="page">
+      <div className="planner-hero">
+        <div>
+          <span className="statement-hero__eyebrow">Daily command centre</span>
+          <h2>Stay ahead of the farm</h2>
+          <p>One prioritized worklist built automatically from health, stock, finance, loan, and contract records.</p>
+        </div>
+        <div className="planner-hero__score">
+          <strong>{Math.max(0,100-overdue*12-dueSoon*3)}</strong><span>readiness score</span>
+        </div>
+      </div>
+      <div className="stat-row finance-summary-row">
+        <StatCard icon={AlertTriangle} label="Overdue" value={overdue} sub="needs attention now" tone={overdue?"rust":"green"}/>
+        <StatCard icon={Clock3} label="Next 7 days" value={dueSoon} sub="upcoming actions" tone={dueSoon?"gold":"green"}/>
+        <StatCard icon={CheckCircle2} label="Completed" value={Object.values(completed).filter(Boolean).length} sub="checked off locally" tone="green"/>
+      </div>
+      <div className="toolbar planner-toolbar">
+        <div className="segmented-tabs">
+          {[7,30,90].map(days=><button key={days} className={windowDays===days?"is-active":""} onClick={()=>setWindowDays(days)}>{days} days</button>)}
+        </div>
+        <label className="planner-toggle"><input type="checkbox" checked={showCompleted} onChange={e=>setShowCompleted(e.target.checked)}/> Show completed</label>
+      </div>
+      {visible.length===0 ? (
+        <EmptyState icon={CheckCircle2} title="Everything is under control" body={`No open actions in the next ${windowDays} days.`}/>
+      ) : (
+        <div className="planner-list">
+          {visible.map(task=>(
+            <div className={`planner-item${completed[task.id]?" is-complete":""}`} key={task.id}>
+              <button className="planner-check" onClick={()=>toggleDone(task.id)} aria-label={completed[task.id]?"Mark incomplete":"Mark complete"}>
+                <CheckCircle2 size={20}/>
+              </button>
+              <div className="planner-date"><strong>{formatDate(task.date)}</strong><Badge tone={tone(task)}>{timing(task)}</Badge></div>
+              <div className="planner-copy"><span className="muted small">{task.type}</span><strong>{task.title}</strong><span className="muted small">{task.detail}</span></div>
+              <button className="btn btn--ghost btn--sm" onClick={()=>task.animalId?onOpenAnimal(task.animalId):onNavigate(task.target)}>Review <ChevronRight size={14}/></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const NAV_SECTIONS = [
-  { items:[{key:"dashboard",label:"Overview",icon:LayoutDashboard}] },
+  { items:[
+    {key:"dashboard",label:"Overview",icon:LayoutDashboard},
+    {key:"planner",label:"Planner",icon:CalendarDays},
+  ] },
   { label:"Livestock", items:[
     {key:"livestock",    label:"Overview",     icon:Activity},
     {key:"animals",      label:"Animals",      icon:PawPrint},
@@ -2738,6 +2846,7 @@ export default function FarmApp() {
             <div className="content">
               {apiError && <div className="form-error" style={{marginBottom:16}}>{apiError}</div>}
               {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} invoices={invoices} onNavigate={setActiveTab}/>}
+              {activeTab==="planner"      && <PlannerPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} invoices={invoices} loans={loans} contracts={contracts} onNavigate={setActiveTab} onOpenAnimal={setOpenAnimalId}/>}
               {activeTab==="livestock"    && <LivestockOverviewPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} onNavigate={setActiveTab}/>}
               {activeTab==="animals"      && <AnimalsPage animals={animals} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
               {activeTab==="vaccinations" && <VaccinationsPage animals={animals} vaccinations={vaccinations} onAdd={()=>{setDefaultAnimal(null);setShowVaxForm(true);}} onDelete={deleteVaccination}/>}
@@ -2745,10 +2854,10 @@ export default function FarmApp() {
               {activeTab==="feed"         && <FeedPage feedItems={feedItems} onAdd={()=>setShowFeedForm(true)} onAdjust={adjustFeed} onDelete={deleteFeed}/>}
               {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
               {activeTab==="statement"    && <StatementPage animals={animals} sales={sales} expenses={expenses} loans={loans} invoices={invoices}/>}
-              {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
+              {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} farm={farm} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
               {activeTab==="loans"        && <LoansPage loans={loans} onAddLoan={()=>setShowLoanForm(true)} onAddPayment={id=>setLoanPaymentLoanId(id || "")} onDeleteLoan={deleteLoan} onDeletePayment={deleteLoanPayment}/>}
-              {activeTab==="sales"        && <SalesPage sales={sales} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
-              {activeTab==="expenses"     && <ExpensesPage expenses={expenses} onAdd={()=>setShowExpenseForm(true)} onDelete={deleteExpense}/>}
+              {activeTab==="sales"        && <SalesPage sales={sales} farm={farm} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
+              {activeTab==="expenses"     && <ExpensesPage expenses={expenses} farm={farm} onAdd={()=>setShowExpenseForm(true)} onDelete={deleteExpense}/>}
               {activeTab==="profile"      && <ProfilePage currentUser={currentUser} farm={farm || currentUser.farm} onSaveFarm={saveFarm}/>}
               {activeTab==="users" && currentUser.role==="Admin" && <UsersPage users={users} currentUser={currentUser} onAdd={()=>setShowAddUser(true)} onEdit={setEditingUserId} onToggleStatus={toggleUser} onDelete={deleteUser}/>}
               {activeTab==="userActions" && currentUser.role==="Admin" && <UserActionsPage actions={userActions} users={users}/>}
@@ -2827,6 +2936,25 @@ const CSS = `
 .topbar__user-info { display:flex;flex-direction:column;line-height:1.25;font-size:12.5px; }
 .content { padding:18px 32px 40px;flex:1; }
 .page { display:flex;flex-direction:column;gap:20px; }
+
+/* Planner */
+.planner-hero { display:flex;align-items:center;justify-content:space-between;gap:24px;background:linear-gradient(130deg,var(--green),#466552);color:#EFE8D6;border-radius:14px;padding:22px 24px;overflow:hidden; }
+.planner-hero h2 { font-family:'Zilla Slab',serif;font-size:27px;margin:4px 0 6px; }
+.planner-hero p { color:#CAD4C5;font-size:13px;margin:0;max-width:650px;line-height:1.5; }
+.planner-hero__score { width:112px;height:112px;border-radius:50%;border:8px solid rgba(217,164,65,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;background:rgba(0,0,0,.08); }
+.planner-hero__score strong { font:700 31px 'Zilla Slab',serif;line-height:1; }
+.planner-hero__score span { font-size:9px;text-transform:uppercase;letter-spacing:.06em;margin-top:5px;color:#DDE5D9; }
+.planner-toolbar { justify-content:space-between; }
+.planner-toggle { display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12.5px;cursor:pointer; }
+.planner-list { display:flex;flex-direction:column;gap:9px; }
+.planner-item { display:grid;grid-template-columns:32px 145px minmax(220px,1fr) auto;align-items:center;gap:14px;background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:11px;padding:12px 14px; }
+.planner-item.is-complete { opacity:.55;border-left-color:var(--green-soft); }
+.planner-item.is-complete .planner-copy strong { text-decoration:line-through; }
+.planner-check { border:0;background:transparent;color:var(--line);padding:2px;cursor:pointer;display:flex; }
+.planner-item.is-complete .planner-check { color:var(--green-soft); }
+.planner-date,.planner-copy { display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0; }
+.planner-date strong { font:500 11.5px 'JetBrains Mono',monospace; }
+.planner-copy strong { font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%; }
 
 /* Avatar */
 .avatar { width:28px;height:28px;border-radius:50%;background:var(--green);color:#EFE8D6;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-family:'JetBrains Mono',monospace; }
@@ -3065,6 +3193,8 @@ tr.clickable:hover { background:#F3EDDD; }
   .composition { flex-direction:column;align-items:flex-start; }
   .statement-hero { flex-direction:column;align-items:stretch; }
   .statement-hero .btn { justify-content:center; }
+  .planner-item { grid-template-columns:30px 120px minmax(160px,1fr); }
+  .planner-item > .btn { grid-column:2 / -1;justify-self:start; }
 }
 
 @media (max-width:480px) {
@@ -3088,6 +3218,12 @@ tr.clickable:hover { background:#F3EDDD; }
   .fin-month-strip__kpis { display:grid;grid-template-columns:1fr;gap:12px; }
   .fin-dash-strip { align-items:stretch; }
   .fin-dash-strip__kpis { display:grid;grid-template-columns:1fr;gap:10px;width:100%; }
+  .planner-hero { align-items:flex-start;padding:18px; }
+  .planner-hero__score { width:82px;height:82px;border-width:6px; }
+  .planner-hero__score strong { font-size:25px; }
+  .planner-hero__score span { font-size:7px; }
+  .planner-item { grid-template-columns:28px 1fr;padding:12px; }
+  .planner-date,.planner-copy,.planner-item > .btn { grid-column:2; }
   .finance-table-wrap,.responsive-table-wrap { background:transparent;border:0;box-shadow:none;overflow:visible; }
   .finance-table-wrap table,.finance-table-wrap tbody,.finance-table-wrap tr,.finance-table-wrap td,
   .responsive-table-wrap table,.responsive-table-wrap tbody,.responsive-table-wrap tr,.responsive-table-wrap td { display:block;width:100%;min-width:0; }
