@@ -4,7 +4,7 @@ from rest_framework.test import APIClient
 
 from farms.models import Farm
 
-from .models import FarmContract, Invoice, Loan, TradingPartner
+from .models import Expense, FarmContract, Invoice, InvoicePayment, Loan, Sale, TradingPartner
 
 
 User = get_user_model()
@@ -229,6 +229,10 @@ class ContractInvoiceTests(TestCase):
         )
 
         self.assertEqual(payment_response.status_code, 201)
+        repayment_expense = Expense.objects.get(loan_payment__id=payment_response.data["id"])
+        self.assertEqual(repayment_expense.amount, 15000)
+        self.assertEqual(repayment_expense.category, Expense.Category.LOAN_PAYMENT)
+        self.assertTrue(repayment_expense.auto_logged)
 
         loans_response = self.client.get("/api/loans/")
         self.assertEqual(len(loans_response.data), 1)
@@ -261,10 +265,11 @@ class ContractInvoiceTests(TestCase):
         self.assertEqual(summary_response.data["loans"]["totalDebt"], "112500.00")
         self.assertEqual(summary_response.data["loans"]["totalPaid"], "15000.00")
         self.assertEqual(summary_response.data["loans"]["outstandingDebt"], "97500.00")
-        self.assertEqual(summary_response.data["totalRevenue"], "100000.00")
+        self.assertEqual(summary_response.data["totalRevenue"], "0.00")
         self.assertEqual(summary_response.data["totalExpenses"], "15000.00")
-        self.assertEqual(summary_response.data["revenueByType"]["Loan proceeds"], "100000.00")
-        self.assertEqual(summary_response.data["expensesByCategory"]["Loan payments"], "15000.00")
+        self.assertEqual(summary_response.data["netProfit"], "-15000.00")
+        self.assertNotIn("Loan proceeds", summary_response.data["revenueByType"])
+        self.assertEqual(summary_response.data["expensesByCategory"]["Loan payment"], "15000.00")
 
         overpayment_response = self.client.post(
             "/api/loan-payments/",
@@ -303,3 +308,88 @@ class ContractInvoiceTests(TestCase):
             format="json",
         )
         self.assertEqual(blocked_after_paid_response.status_code, 400)
+
+    def test_invoice_payments_post_once_to_the_correct_ledger(self):
+        supplier = TradingPartner.objects.create(
+            farm=self.farm, name="Feed Supplier", partner_type=TradingPartner.PartnerType.SUPPLIER
+        )
+        customer = TradingPartner.objects.create(
+            farm=self.farm, name="Milk Buyer", partner_type=TradingPartner.PartnerType.CUSTOMER
+        )
+        payable = Invoice.objects.create(
+            farm=self.farm, partner=supplier, direction=Invoice.Direction.PAYABLE,
+            invoice_number="PAY-001", issue_date="2026-07-01", description="Feed", amount="20000.00",
+        )
+        receivable = Invoice.objects.create(
+            farm=self.farm, partner=customer, direction=Invoice.Direction.RECEIVABLE,
+            invoice_number="REC-001", issue_date="2026-07-01", description="Milk", amount="30000.00",
+        )
+
+        paid = self.client.post(
+            f"/api/invoices/{payable.id}/record-payment/",
+            {"date": "2026-07-10", "amount": "7500.00", "method": "Bank"},
+            format="json",
+        )
+        collected = self.client.post(
+            f"/api/invoices/{receivable.id}/record-payment/",
+            {"date": "2026-07-11", "amount": "12000.00", "method": "M-Pesa"},
+            format="json",
+        )
+
+        self.assertEqual(paid.status_code, 201)
+        self.assertEqual(collected.status_code, 201)
+        self.assertEqual(paid.data["status"], Invoice.Status.PART_PAID)
+        self.assertEqual(collected.data["outstandingBalance"], "18000.00")
+        self.assertTrue(Expense.objects.filter(invoice_payment__invoice=payable, amount="7500.00").exists())
+        self.assertTrue(Sale.objects.filter(invoice_payment__invoice=receivable, amount="12000.00").exists())
+
+        summary = self.client.get("/api/finances/summary/").data
+        self.assertEqual(summary["totalRevenue"], "12000.00")
+        self.assertEqual(summary["totalExpenses"], "7500.00")
+        self.assertEqual(summary["netProfit"], "4500.00")
+
+        payment_id = collected.data["payments"][0]["id"]
+        reversed_response = self.client.post(
+            f"/api/invoices/{receivable.id}/reverse-payment/",
+            {"paymentId": payment_id},
+            format="json",
+        )
+        self.assertEqual(reversed_response.status_code, 200)
+        self.assertEqual(reversed_response.data["amountPaid"], "0.00")
+        self.assertFalse(InvoicePayment.objects.filter(pk=payment_id).exists())
+        self.assertFalse(Sale.objects.filter(invoice_payment_id=payment_id).exists())
+
+    def test_invoice_lifecycle_and_contract_editing(self):
+        partner = TradingPartner.objects.create(
+            farm=self.farm, name="Customer", partner_type=TradingPartner.PartnerType.CUSTOMER
+        )
+        contract = FarmContract.objects.create(
+            farm=self.farm, partner=partner, direction=FarmContract.Direction.FARM_OUTPUT,
+            title="Original", goods_or_services="Milk", start_date="2026-07-01",
+        )
+        invoice = Invoice.objects.create(
+            farm=self.farm, partner=partner, contract=contract,
+            direction=Invoice.Direction.RECEIVABLE, invoice_number="LIFE-001",
+            issue_date="2026-07-01", description="Milk", amount="1000.00",
+        )
+
+        edited = self.client.patch(
+            f"/api/contracts/{contract.id}/",
+            {"title": "Updated agreement", "status": FarmContract.Status.PAUSED},
+            format="json",
+        )
+        recalled = self.client.post(
+            f"/api/invoices/{invoice.id}/transition/", {"action": "recall"}, format="json"
+        )
+        reopened = self.client.post(
+            f"/api/invoices/{invoice.id}/transition/", {"action": "reopen"}, format="json"
+        )
+        closed = self.client.post(
+            f"/api/invoices/{invoice.id}/transition/", {"action": "close"}, format="json"
+        )
+
+        self.assertEqual(edited.status_code, 200)
+        self.assertEqual(edited.data["title"], "Updated agreement")
+        self.assertEqual(recalled.data["status"], Invoice.Status.RECALLED)
+        self.assertEqual(reopened.data["status"], Invoice.Status.ISSUED)
+        self.assertEqual(closed.data["status"], Invoice.Status.CLOSED)

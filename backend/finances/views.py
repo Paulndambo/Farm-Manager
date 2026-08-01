@@ -1,11 +1,12 @@
 from collections import defaultdict
 from decimal import Decimal
 
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Count, Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework import viewsets
 
@@ -13,16 +14,18 @@ from accounts.permissions import IsActiveFarmUser
 from inventory.models import FeedItem
 from livestock.models import Animal, HealthEvent, Vaccination
 
-from .models import Expense, FarmContract, Invoice, Loan, LoanPayment, Sale, TradingPartner
+from .models import Expense, FarmContract, Invoice, InvoicePayment, Loan, LoanPayment, Sale, TradingPartner
 from .serializers import (
     ExpenseSerializer,
     FarmContractSerializer,
     InvoiceSerializer,
+    InvoicePaymentSerializer,
     LoanPaymentSerializer,
     LoanSerializer,
     SaleSerializer,
     TradingPartnerSerializer,
 )
+from .services import post_loan_payment_expense, record_invoice_payment
 
 
 def money(value):
@@ -39,6 +42,16 @@ class SaleViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(farm=self.request.user.farm)
 
+    def perform_update(self, serializer):
+        if self.get_object().invoice_payment_id:
+            raise ValidationError({"detail": "Invoice collection records are managed from the invoice."})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.invoice_payment_id:
+            raise ValidationError({"detail": "Reverse the invoice payment instead of deleting its revenue record."})
+        instance.delete()
+
 
 class ExpenseViewSet(viewsets.ModelViewSet):
     serializer_class = ExpenseSerializer
@@ -49,6 +62,19 @@ class ExpenseViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(farm=self.request.user.farm)
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        if instance.loan_payment_id or instance.invoice_payment_id:
+            raise ValidationError({"detail": "Linked payment expenses are managed from their source payment."})
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.loan_payment_id or instance.invoice_payment_id:
+            raise ValidationError(
+                {"detail": "Linked payment expenses must be removed by reversing their source payment."}
+            )
+        instance.delete()
 
 
 class TradingPartnerViewSet(viewsets.ModelViewSet):
@@ -83,6 +109,53 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(farm=self.request.user.farm)
 
+    def perform_destroy(self, instance):
+        if instance.payments.exists():
+            raise ValidationError({"detail": "Reverse invoice payments before deleting this invoice."})
+        instance.delete()
+
+    @action(detail=True, methods=["post"], url_path="record-payment")
+    def record_payment(self, request, pk=None):
+        invoice = self.get_object()
+        serializer = InvoicePaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payment = record_invoice_payment(invoice, **serializer.validated_data)
+        return Response(self.get_serializer(invoice).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="reverse-payment")
+    def reverse_payment(self, request, pk=None):
+        invoice = self.get_object()
+        payment_id = request.data.get("paymentId")
+        try:
+            payment = invoice.payments.get(pk=payment_id)
+        except InvoicePayment.DoesNotExist:
+            raise ValidationError({"paymentId": "Payment does not belong to this invoice."})
+        payment.delete()
+        invoice.refresh_payment_status()
+        return Response(self.get_serializer(invoice).data)
+
+    @action(detail=True, methods=["post"])
+    def transition(self, request, pk=None):
+        invoice = self.get_object()
+        transition = request.data.get("action")
+        unpaid_required = {"cancel": Invoice.Status.CANCELLED, "recall": Invoice.Status.RECALLED}
+        if transition in unpaid_required:
+            if invoice.amount_paid > 0:
+                raise ValidationError(
+                    {"action": "Reverse recorded payments before cancelling or recalling this invoice."}
+                )
+            invoice.status = unpaid_required[transition]
+        elif transition == "close":
+            invoice.status = Invoice.Status.CLOSED
+        elif transition in {"issue", "reopen"}:
+            invoice.status = (
+                Invoice.Status.PART_PAID if invoice.amount_paid > 0 else Invoice.Status.ISSUED
+            )
+        else:
+            raise ValidationError({"action": "Use issue, recall, cancel, close, or reopen."})
+        invoice.save(update_fields=["status"])
+        return Response(self.get_serializer(invoice).data)
+
 
 class LoanViewSet(viewsets.ModelViewSet):
     serializer_class = LoanSerializer
@@ -103,15 +176,19 @@ class LoanPaymentViewSet(viewsets.ModelViewSet):
         return LoanPayment.objects.filter(loan__farm=self.request.user.farm).select_related("loan")
 
     def perform_create(self, serializer):
-        payment = serializer.save()
-        payment.loan.refresh_payment_status()
+        with transaction.atomic():
+            payment = serializer.save()
+            post_loan_payment_expense(payment)
+            payment.loan.refresh_payment_status()
 
     def perform_update(self, serializer):
-        previous_loan = self.get_object().loan
-        payment = serializer.save()
-        previous_loan.refresh_payment_status()
-        if payment.loan_id != previous_loan.id:
-            payment.loan.refresh_payment_status()
+        with transaction.atomic():
+            previous_loan = self.get_object().loan
+            payment = serializer.save()
+            post_loan_payment_expense(payment)
+            previous_loan.refresh_payment_status()
+            if payment.loan_id != previous_loan.id:
+                payment.loan.refresh_payment_status()
 
     def perform_destroy(self, instance):
         loan = instance.loan
@@ -160,8 +237,8 @@ def build_finance_summary(farm):
     total_debt = sum((loan.total_due for loan in loans), start=Decimal("0"))
     total_loan_paid = LoanPayment.objects.filter(loan__farm=farm).aggregate(total=Sum("amount"))["total"] or Decimal("0")
     outstanding_debt = max(total_debt - total_loan_paid, Decimal("0"))
-    total_revenue = total_sales + total_principal
-    total_expenses = operating_expenses + total_loan_paid
+    total_revenue = total_sales
+    total_expenses = operating_expenses
     net = total_revenue - total_expenses
     margin = (net / total_revenue * Decimal("100")) if total_revenue else Decimal("0")
 
@@ -173,20 +250,12 @@ def build_finance_summary(farm):
         row["category"]: money(row["total"])
         for row in Expense.objects.filter(farm=farm).values("category").annotate(total=Sum("amount")).order_by("category")
     }
-    if total_principal:
-        revenue_by_type["Loan proceeds"] = money(total_principal)
-    if total_loan_paid:
-        expenses_by_category["Loan payments"] = money(total_loan_paid)
 
     monthly = defaultdict(lambda: {"revenue": Decimal("0"), "expenses": Decimal("0")})
     for row in Sale.objects.filter(farm=farm).annotate(month=TruncMonth("date")).values("month").annotate(total=Sum("amount")):
         monthly[month_key(row["month"])]["revenue"] = row["total"] or Decimal("0")
     for row in Expense.objects.filter(farm=farm).annotate(month=TruncMonth("date")).values("month").annotate(total=Sum("amount")):
         monthly[month_key(row["month"])]["expenses"] = row["total"] or Decimal("0")
-    for row in Loan.objects.filter(farm=farm).annotate(month=TruncMonth("issue_date")).values("month").annotate(total=Sum("principal_amount")):
-        monthly[month_key(row["month"])]["revenue"] += row["total"] or Decimal("0")
-    for row in LoanPayment.objects.filter(loan__farm=farm).annotate(month=TruncMonth("date")).values("month").annotate(total=Sum("amount")):
-        monthly[month_key(row["month"])]["expenses"] += row["total"] or Decimal("0")
 
     return {
         "totalRevenue": money(total_revenue),

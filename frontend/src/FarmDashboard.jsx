@@ -6,6 +6,7 @@ import {
   Pencil, Lock, Activity, Heart, FileText, ClipboardList,
   Banknote, Receipt, TrendingDown, Wallet, BadgeDollarSign, Settings, Printer,
   CalendarDays, AlertTriangle, Clock3,
+  Eye, RotateCcw,
 } from "lucide-react";
 import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid,
@@ -29,7 +30,7 @@ const CONTRACT_DIRECTIONS = ["Supply to farm","Farm output"];
 const CONTRACT_STATUSES = ["Draft","Active","Paused","Ended"];
 const BILLING_CYCLES = ["On delivery","Weekly","Monthly","Seasonal","Other"];
 const INVOICE_DIRECTIONS = ["Payable","Receivable"];
-const INVOICE_STATUSES = ["Draft","Issued","Part paid","Paid","Overdue","Cancelled"];
+const INVOICE_STATUSES = ["Draft","Issued","Part paid","Paid","Overdue","Recalled","Closed","Cancelled"];
 const LOAN_STATUSES = ["Active","Paid","Defaulted","Written off"];
 const LOAN_PAYMENT_FREQUENCIES = ["Weekly","Monthly","Quarterly","Seasonal","Flexible"];
 const USER_ACTION_TYPES = ["create","edit","delete"];
@@ -313,6 +314,9 @@ function AnimalForm({ onSubmit, onClose, initial }) {
       </div>
     </form>
   );
+}
+function isOpenInvoice(invoice) {
+  return !["Paid","Cancelled","Recalled","Closed"].includes(invoice.status);
 }
 
 function SelectedAnimalField({ animal }) {
@@ -762,21 +766,16 @@ function DashboardPage({ animals, vaccinations, healthEvents, feedItems, sales, 
   const openHealth = healthEvents.filter(h=>!h.resolved).length;
   const dueVaccinations = vaccinations.filter(v=>{ const s=getVaxStatus(v.nextDue); return s.tone==="warning"||s.tone==="danger"; }).length;
   const lowFeed = feedItems.filter(f=>getFeedStatus(f).tone!=="success").length;
-  const loanPayments = (loans||[]).flatMap(loan=>(loan.payments||[]).map(payment=>({...payment,loan})));
-  const loanIncome = (loans||[]).reduce((s,x)=>s+x.principalAmount,0);
-  const loanExpense = loanPayments.reduce((s,x)=>s+x.amount,0);
-  const totalRevenue = (sales||[]).reduce((s,x)=>s+x.amount,0) + loanIncome;
-  const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0) + loanExpense;
+  const totalRevenue = (sales||[]).reduce((s,x)=>s+x.amount,0);
+  const totalExpenses = (expenses||[]).reduce((s,x)=>s+x.amount,0);
   const netProfit = totalRevenue - totalExpenses;
   const thisMonthKey = monthKey(todayStr());
-  const monthRevenue = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
-    + (loans||[]).filter(x=>monthKey(x.issueDate)===thisMonthKey).reduce((s,x)=>s+x.principalAmount,0);
-  const monthExpenses = (expenses||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
-    + loanPayments.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthRevenue = (sales||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthExpenses = (expenses||[]).filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthNet = monthRevenue - monthExpenses;
   const outstandingDebt = (loans||[]).reduce((s,x)=>s+x.outstandingBalance,0);
-  const receivableOutstanding = (invoices||[]).filter(i=>i.direction==="Receivable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
-  const payableOutstanding = (invoices||[]).filter(i=>i.direction==="Payable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
+  const receivableOutstanding = (invoices||[]).filter(i=>i.direction==="Receivable"&&isOpenInvoice(i)).reduce((sum,i)=>sum+i.outstandingBalance,0);
+  const payableOutstanding = (invoices||[]).filter(i=>i.direction==="Payable"&&isOpenInvoice(i)).reduce((sum,i)=>sum+i.outstandingBalance,0);
   const alerts = [
     openHealth > 0 && { label:"Open health issues", value:openHealth, tone:"warning", target:"livestock" },
     dueVaccinations > 0 && { label:"Vaccinations due", value:dueVaccinations, tone:"danger", target:"vaccinations" },
@@ -1676,11 +1675,11 @@ function ExpenseForm({ onSubmit, onClose }) {
 }
 
 // ─── Finance pages ────────────────────────────────────────────────────────────
-function PartnerForm({ onSubmit, onClose }) {
-  const [form, setForm] = useState({ name:"", partnerType:"Supplier", contactPerson:"", phone:"", email:"", address:"", notes:"" });
+function PartnerForm({ onSubmit, onClose, initial }) {
+  const [form, setForm] = useState(initial || { name:"", partnerType:"Supplier", contactPerson:"", phone:"", email:"", address:"", notes:"" });
   const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
   return (
-    <form onSubmit={e=>{e.preventDefault();if(!form.name.trim())return;onSubmit({...form,isActive:true});}}>
+    <form onSubmit={e=>{e.preventDefault();if(!form.name.trim())return;onSubmit({...form,isActive:initial?form.isActive:true});}}>
       <div className="form-grid">
         <label className="span-2">Partner name *<input value={form.name} onChange={set("name")} placeholder="e.g. Highland Millers or Githunguri Dairy" required/></label>
         <label>Relationship<select value={form.partnerType} onChange={set("partnerType")}>{PARTNER_TYPES.map(t=><option key={t}>{t}</option>)}</select></label>
@@ -1698,8 +1697,13 @@ function PartnerForm({ onSubmit, onClose }) {
   );
 }
 
-function ContractForm({ partners, onSubmit, onClose }) {
-  const [form, setForm] = useState({
+function ContractForm({ partners, onSubmit, onClose, initial }) {
+  const [form, setForm] = useState(initial ? {
+    ...initial,
+    partnerId:String(initial.partnerId),
+    endDate:initial.endDate||"",
+    agreedRate:initial.agreedRate??"",
+  } : {
     partnerId: partners[0]?.id || "", direction:"Supply to farm", title:"", goodsOrServices:"",
     startDate:todayStr(), endDate:"", billingCycle:"Monthly", agreedRate:"", terms:"", status:"Active",
   });
@@ -1732,8 +1736,16 @@ function ContractForm({ partners, onSubmit, onClose }) {
   );
 }
 
-function InvoiceForm({ partners, contracts, onSubmit, onClose }) {
-  const [form, setForm] = useState({
+function InvoiceForm({ partners, contracts, onSubmit, onClose, initial }) {
+  const editing = Boolean(initial);
+  const [form, setForm] = useState(initial ? {
+    ...initial,
+    partnerId:String(initial.partnerId),
+    contractId:initial.contractId ? String(initial.contractId) : "",
+    dueDate:initial.dueDate||"",
+    amountPaid:String(initial.amountPaid||0),
+    items:(initial.items||[]).map(item=>({...item,quantity:String(item.quantity),unitPrice:String(item.unitPrice)})),
+  } : {
     partnerId: partners[0]?.id || "", contractId:"", direction:"Payable", invoiceNumber:"",
     issueDate:todayStr(), dueDate:"", description:"", amountPaid:"0", status:"Issued", notes:"",
     items:[{ description:"", quantity:"1", unit:"", unitPrice:"" }],
@@ -1772,13 +1784,13 @@ function InvoiceForm({ partners, contracts, onSubmit, onClose }) {
     <form onSubmit={handleSubmit}>
       <div className="form-grid">
         <label>Invoice type<select value={form.direction} onChange={set("direction")}>{INVOICE_DIRECTIONS.map(d=><option key={d}>{d}</option>)}</select></label>
-        <label>Status<select value={form.status} onChange={set("status")}>{INVOICE_STATUSES.map(s=><option key={s}>{s}</option>)}</select></label>
+        <label>Status{editing?<input value={form.status} disabled/>:<select value={form.status} onChange={set("status")}>{INVOICE_STATUSES.slice(0,2).map(s=><option key={s}>{s}</option>)}</select>}</label>
         <label className="span-2">Partner *<select value={form.partnerId} onChange={set("partnerId")}>{partners.map(p=><option key={p.id} value={p.id}>{p.name} ({p.partnerType})</option>)}</select></label>
         <label className="span-2">Contract<select value={form.contractId} onChange={set("contractId")}><option value="">No contract link</option>{partnerContracts.map(c=><option key={c.id} value={c.id}>{c.title}</option>)}</select></label>
         <label>Invoice number *<input value={form.invoiceNumber} onChange={set("invoiceNumber")} placeholder="e.g. INV-2026-001" required/></label>
         <label>Issue date<input type="date" value={form.issueDate} onChange={set("issueDate")} required/></label>
         <label>Due date<input type="date" value={form.dueDate} onChange={set("dueDate")}/></label>
-        <label>Amount paid<input type="number" min="0" step="0.01" value={form.amountPaid} onChange={set("amountPaid")}/></label>
+        {!editing&&<label>Opening payment<input type="number" min="0" step="0.01" value={form.amountPaid} onChange={set("amountPaid")}/></label>}
         <label className="span-2">Description *<input value={form.description} onChange={set("description")} placeholder="e.g. Dairy meal delivery or July milk supply" required/></label>
         <div className="span-2 invoice-items-editor">
           <div className="invoice-items-editor__head"><strong>Invoice items</strong><button type="button" className="btn btn--tiny" onClick={addItem}><Plus size={12}/>Item</button></div>
@@ -1804,6 +1816,64 @@ function InvoiceForm({ partners, contracts, onSubmit, onClose }) {
         <button type="submit" className="btn btn--primary"><Receipt size={15}/>Save invoice</button>
       </div>
     </form>
+  );
+}
+
+function InvoicePaymentForm({ invoice, onSubmit, onClose }) {
+  const [form,setForm]=useState({date:todayStr(),amount:String(invoice.outstandingBalance),method:"",reference:"",notes:""});
+  const set=k=>e=>setForm(f=>({...f,[k]:e.target.value}));
+  const action=invoice.direction==="Receivable"?"Collect":"Pay";
+  return (
+    <form onSubmit={e=>{e.preventDefault();onSubmit({...form,amount:parseFloat(form.amount)||0});}}>
+      <div className="form-grid">
+        <label>Date<input type="date" value={form.date} onChange={set("date")} required/></label>
+        <label>Amount *<input type="number" min="0.01" max={invoice.outstandingBalance} step="0.01" value={form.amount} onChange={set("amount")} required/></label>
+        <label>Method<input value={form.method} onChange={set("method")} placeholder="M-Pesa, bank, cash"/></label>
+        <label>Reference<input value={form.reference} onChange={set("reference")} placeholder="Transaction or receipt ID"/></label>
+        <label className="span-2">Notes<textarea rows={2} value={form.notes} onChange={set("notes")}/></label>
+      </div>
+      <p className="muted small profile-note">{action}ing this {invoice.direction.toLowerCase()} invoice will automatically create {invoice.direction==="Receivable"?"a revenue":"an expense"} record.</p>
+      <div className="form-actions"><button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button><button className="btn btn--primary"><Banknote size={15}/>{action} payment</button></div>
+    </form>
+  );
+}
+
+function InvoiceDetails({ invoice, farm, onClose, onEdit, onPayment, onTransition, onReversePayment }) {
+  const canPay=!["Cancelled","Recalled","Closed","Paid"].includes(invoice.status)&&invoice.outstandingBalance>0;
+  return (
+    <div className="drawer-overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="drawer invoice-drawer">
+        <div className="drawer__header">
+          <div><span className="muted small">{invoice.direction}</span><h2>{invoice.invoiceNumber}</h2><span className="muted small">{invoice.partnerName}</span></div>
+          <div className="drawer__header-actions"><button className="icon-btn" onClick={()=>downloadInvoicePdf(invoice,farm)} title="Download PDF"><Printer size={17}/></button><button className="icon-btn" onClick={onClose}><X size={18}/></button></div>
+        </div>
+        <div className="invoice-detail-summary">
+          <div><span>Total</span><strong>{currency(invoice.amount)}</strong></div>
+          <div><span>Paid</span><strong>{currency(invoice.amountPaid)}</strong></div>
+          <div><span>Outstanding</span><strong>{currency(invoice.outstandingBalance)}</strong></div>
+          <div><span>Status</span><Badge tone={invoiceTone(invoice.status)}>{invoice.status}</Badge></div>
+        </div>
+        <div className="invoice-detail-actions">
+          {canPay&&<button className="btn btn--primary" onClick={onPayment}><Banknote size={14}/>{invoice.direction==="Receivable"?"Collect payment":"Pay invoice"}</button>}
+          <button className="btn btn--ghost" onClick={onEdit}><Pencil size={14}/>Edit</button>
+          {["Draft","Recalled","Closed"].includes(invoice.status)&&<button className="btn btn--ghost" onClick={()=>onTransition("reopen")}><RotateCcw size={14}/>Reopen</button>}
+          {invoice.status==="Draft"&&<button className="btn btn--ghost" onClick={()=>onTransition("issue")}>Issue</button>}
+          {!["Cancelled","Recalled","Closed","Paid"].includes(invoice.status)&&<button className="btn btn--ghost" onClick={()=>onTransition("close")}>Close</button>}
+          {!invoice.amountPaid&&!["Cancelled","Recalled"].includes(invoice.status)&&<button className="btn btn--ghost" onClick={()=>onTransition(invoice.direction==="Receivable"?"recall":"cancel")}>{invoice.direction==="Receivable"?"Recall":"Cancel"}</button>}
+        </div>
+        <div className="drawer__tab-body">
+          <div className="overview-grid">
+            <div className="overview-grid__item"><span className="muted small">Issued</span><strong>{formatDate(invoice.issueDate)}</strong></div>
+            <div className="overview-grid__item"><span className="muted small">Due</span><strong>{formatDate(invoice.dueDate)}</strong></div>
+            <div className="overview-grid__item"><span className="muted small">Contract</span><strong>{invoice.contractTitle||"Not linked"}</strong></div>
+            <div className="overview-grid__item"><span className="muted small">Description</span><strong>{invoice.description}</strong></div>
+          </div>
+          <div><h3 className="detail-heading">Items</h3><table className="mini-table"><thead><tr><th>Description</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody>{invoice.items.map(item=><tr key={item.id||item.description}><td>{item.description}</td><td>{item.quantity} {item.unit}</td><td className="mono">{currency(item.unitPrice)}</td><td className="mono">{currency(item.lineTotal)}</td></tr>)}</tbody></table></div>
+          <div><h3 className="detail-heading">Payment history</h3>{invoice.payments.length===0?<p className="muted small">No payments recorded.</p>:invoice.payments.map(payment=><div className="payment-row" key={payment.id}><div><strong className="mono">{currency(payment.amount)}</strong><span className="muted small">{formatDate(payment.date)} · {payment.method||"Method not specified"} {payment.reference&&`· ${payment.reference}`}</span></div><button className="icon-btn icon-btn--danger" onClick={()=>onReversePayment(payment.id)} title="Reverse payment"><RotateCcw size={14}/></button></div>)}</div>
+          {invoice.notes&&<div className="info-block"><FileText size={14}/><p>{invoice.notes}</p></div>}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1945,24 +2015,22 @@ function StatementPage({ animals, sales, expenses, loans, invoices }) {
   const outstandingDebt = loans.reduce((sum,l)=>sum+l.outstandingBalance,0);
   const periodLoanPrincipal = periodLoans.reduce((sum,l)=>sum+l.principalAmount,0);
   const periodDebtPaid = periodLoanPayments.reduce((sum,p)=>sum+p.amount,0);
-  const periodRevenue = periodSales.reduce((sum,s)=>sum+s.amount,0) + periodLoanPrincipal;
-  const periodExpenseTotal = periodExpenses.reduce((sum,e)=>sum+e.amount,0) + periodDebtPaid;
+  const periodRevenue = periodSales.reduce((sum,s)=>sum+s.amount,0);
+  const periodExpenseTotal = periodExpenses.reduce((sum,e)=>sum+e.amount,0);
   const periodOperatingProfit = periodRevenue - periodExpenseTotal;
-  const receivableOutstanding = invoices.filter(i=>i.direction==="Receivable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
-  const payableOutstanding = invoices.filter(i=>i.direction==="Payable").reduce((sum,i)=>sum+Math.max(i.amount-i.amountPaid,0),0);
+  const receivableOutstanding = invoices.filter(i=>i.direction==="Receivable"&&isOpenInvoice(i)).reduce((sum,i)=>sum+i.outstandingBalance,0);
+  const payableOutstanding = invoices.filter(i=>i.direction==="Payable"&&isOpenInvoice(i)).reduce((sum,i)=>sum+i.outstandingBalance,0);
   const netPosition = activeHerdValue + receivableOutstanding - payableOutstanding - outstandingDebt;
   const roi = purchaseBasis > 0 ? ((herdValue - purchaseBasis + periodOperatingProfit) / purchaseBasis) * 100 : null;
-  const expenseByCategory = Object.entries({
-      ...periodExpenses.reduce((acc,e)=>({...acc,[e.category]:(acc[e.category]||0)+e.amount}),{}),
-      ...(periodDebtPaid ? {"Loan payments": periodDebtPaid} : {}),
-    })
+  const expenseByCategory = Object.entries(
+      periodExpenses.reduce((acc,e)=>({...acc,[e.category]:(acc[e.category]||0)+e.amount}),{})
+    )
     .map(([category,total])=>({category,total}))
     .sort((a,b)=>b.total-a.total)
     .slice(0,6);
-  const salesByType = Object.entries({
-      ...periodSales.reduce((acc,s)=>({...acc,[s.type]:(acc[s.type]||0)+s.amount}),{}),
-      ...(periodLoanPrincipal ? {"Loan proceeds": periodLoanPrincipal} : {}),
-    })
+  const salesByType = Object.entries(
+      periodSales.reduce((acc,s)=>({...acc,[s.type]:(acc[s.type]||0)+s.amount}),{})
+    )
     .map(([type,total])=>({type,total}))
     .sort((a,b)=>b.total-a.total)
     .slice(0,6);
@@ -2064,18 +2132,16 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
     description: `Loan received - ${loan.lender}`,
     loan,
   })),[loans]);
-  const totalRevenue    = sales.reduce((s,x)=>s+x.amount,0) + loanDisbursements.reduce((s,x)=>s+x.amount,0);
-  const totalExpenses   = expenses.reduce((s,x)=>s+x.amount,0) + loanPayments.reduce((s,x)=>s+x.amount,0);
+  const totalRevenue    = sales.reduce((s,x)=>s+x.amount,0);
+  const totalExpenses   = expenses.reduce((s,x)=>s+x.amount,0);
   const netProfit       = totalRevenue - totalExpenses;
   const margin          = totalRevenue>0 ? ((netProfit/totalRevenue)*100).toFixed(1) : null;
   const outstandingDebt = loans.reduce((s,x)=>s+x.outstandingBalance,0);
 
   const now = todayStr();
   const thisMonthKey = monthKey(now);
-  const monthRevenue  = sales.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
-    + loanDisbursements.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
-  const monthExpenses = expenses.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0)
-    + loanPayments.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthRevenue  = sales.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
+  const monthExpenses = expenses.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthLoanPayments = loanPayments.filter(x=>monthKey(x.date)===thisMonthKey).reduce((s,x)=>s+x.amount,0);
   const monthProfit   = monthRevenue - monthExpenses;
 
@@ -2084,33 +2150,28 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
     const buckets = {};
     sales.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].rev+=x.amount; }});
     expenses.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].exp+=x.amount; }});
-    loanDisbursements.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].rev+=x.amount; }});
-    loanPayments.forEach(x=>{ const k=monthKey(x.date); if(k) { buckets[k]=buckets[k]||{rev:0,exp:0}; buckets[k].exp+=x.amount; }});
     return Object.entries(buckets).sort((a,b)=>a[0]<b[0]?-1:1).slice(-8)
       .map(([k,v])=>({ label:monthLabel(k), revenue:Math.round(v.rev), expenses:Math.round(v.exp), profit:Math.round(v.rev-v.exp) }));
-  },[sales,expenses,loanDisbursements,loanPayments]);
+  },[sales,expenses]);
 
   // Expense by category pie
   const expCatData = useMemo(()=>{
     const c={};
     expenses.forEach(x=>{ c[x.category]=(c[x.category]||0)+x.amount; });
-    loanPayments.forEach(x=>{ c["Loan payments"]=(c["Loan payments"]||0)+x.amount; });
     return Object.entries(c).map(([name,value])=>({name,value:Math.round(value)})).sort((a,b)=>b.value-a.value);
-  },[expenses,loanPayments]);
+  },[expenses]);
 
   // Revenue by type pie
   const revTypeData = useMemo(()=>{
     const c={};
     sales.forEach(x=>{ c[x.type]=(c[x.type]||0)+x.amount; });
-    loanDisbursements.forEach(x=>{ c["Loan proceeds"]=(c["Loan proceeds"]||0)+x.amount; });
     return Object.entries(c).map(([name,value])=>({name,value:Math.round(value)})).sort((a,b)=>b.value-a.value);
-  },[sales,loanDisbursements]);
+  },[sales]);
 
   const recentTx = [
     ...sales.map(x=>({...x,_kind:"sale"})),
     ...expenses.map(x=>({...x,_kind:"expense"})),
     ...loanDisbursements.map(x=>({...x,_kind:"loan_income"})),
-    ...loanPayments.map(x=>({...x,_kind:"loan_payment",description:`Loan payment - ${x.loan.lender}`})),
   ].sort((a,b)=>a.date<b.date?1:-1).slice(0,10);
 
   const isEmpty = sales.length===0 && expenses.length===0 && loans.length===0;
@@ -2225,7 +2286,7 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
               <tbody>
                 {recentTx.map(tx=>(
                   <tr key={`${tx._kind}-${tx.id}`}>
-                    <td data-label="Type"><Badge tone={tx._kind==="sale"||tx._kind==="loan_income"?"success":"danger"}>{tx._kind==="sale"?"Revenue":tx._kind==="loan_income"?"Loan income":tx._kind==="loan_payment"?"Loan payment":"Expense"}</Badge></td>
+                    <td data-label="Type"><Badge tone={tx._kind==="sale"||tx._kind==="loan_income"?"success":"danger"}>{tx._kind==="sale"?"Revenue":tx._kind==="loan_income"?"Loan financing":"Expense"}</Badge></td>
                     <td data-label="Description">{tx.description}</td>
                     <td data-label="Date" className="mono">{formatDate(tx.date)}</td>
                     <td data-label="Amount" className={`mono ${tx._kind==="sale"||tx._kind==="loan_income"?"trend-up":"trend-down"}`}>
@@ -2243,11 +2304,11 @@ function FinancesPage({ sales, expenses, loans, onNavigate }) {
   );
 }
 
-function ContractsPage({ partners, contracts, invoices, farm, onAddPartner, onAddContract, onAddInvoice, onDeletePartner, onDeleteContract, onDeleteInvoice }) {
+function ContractsPage({ partners, contracts, invoices, farm, onAddPartner, onAddContract, onAddInvoice, onEditPartner, onEditContract, onOpenInvoice, onDeletePartner, onDeleteContract, onDeleteInvoice }) {
   const [tab, setTab] = useState("invoices");
   const [confirm, setConfirm] = useState(null);
-  const payable = invoices.filter(i=>i.direction==="Payable").reduce((s,i)=>s+Math.max(i.amount-i.amountPaid,0),0);
-  const receivable = invoices.filter(i=>i.direction==="Receivable").reduce((s,i)=>s+Math.max(i.amount-i.amountPaid,0),0);
+  const payable = invoices.filter(i=>i.direction==="Payable"&&isOpenInvoice(i)).reduce((s,i)=>s+i.outstandingBalance,0);
+  const receivable = invoices.filter(i=>i.direction==="Receivable"&&isOpenInvoice(i)).reduce((s,i)=>s+i.outstandingBalance,0);
   const activeContracts = contracts.filter(c=>c.status==="Active").length;
 
   function confirmDelete() {
@@ -2285,7 +2346,7 @@ function ContractsPage({ partners, contracts, invoices, farm, onAddPartner, onAd
             <tr key={p.id}>
               <td data-label="Name"><strong>{p.name}</strong></td><td data-label="Type"><Badge tone={p.partnerType==="Supplier"?"warning":p.partnerType==="Customer"?"success":"neutral"}>{p.partnerType}</Badge></td>
               <td data-label="Contact">{p.contactPerson||"-"}</td><td data-label="Phone" className="mono">{p.phone||"-"}</td><td data-label="Email" className="mono">{p.email||"-"}</td><td data-label="Notes" className="muted">{p.notes||"-"}</td>
-              <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"partner",id:p.id})} aria-label="Delete partner"><Trash2 size={15}/></button></td>
+              <td data-label="" className="actions-cell"><button className="icon-btn" onClick={()=>onEditPartner(p.id)} aria-label="Edit trading partner"><Pencil size={15}/></button><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"partner",id:p.id})} aria-label="Delete partner"><Trash2 size={15}/></button></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -2301,7 +2362,7 @@ function ContractsPage({ partners, contracts, invoices, farm, onAddPartner, onAd
               <td data-label="Contract"><strong>{c.title}</strong></td><td data-label="Partner">{c.partnerName}</td><td data-label="Direction"><Badge tone={c.direction==="Farm output"?"success":"warning"}>{c.direction}</Badge></td>
               <td data-label="Goods / services">{c.goodsOrServices}</td><td data-label="Cycle">{c.billingCycle}</td><td data-label="Rate" className="mono">{c.agreedRate?currency(c.agreedRate):"-"}</td><td data-label="Status"><Badge tone={c.status==="Active"?"success":"neutral"}>{c.status}</Badge></td>
               <td data-label="Dates" className="mono">{formatDate(c.startDate)}{c.endDate?` - ${formatDate(c.endDate)}`:""}</td>
-              <td data-label="" className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"contract",id:c.id})} aria-label="Delete contract"><Trash2 size={15}/></button></td>
+              <td data-label="" className="actions-cell"><button className="icon-btn" onClick={()=>onEditContract(c.id)} aria-label="Edit contract"><Pencil size={15}/></button><button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"contract",id:c.id})} aria-label="Delete contract"><Trash2 size={15}/></button></td>
             </tr>
           ))}</tbody>
         </table></div>
@@ -2318,6 +2379,7 @@ function ContractsPage({ partners, contracts, invoices, farm, onAddPartner, onAd
               <td data-label="Partner">{i.partnerName}</td><td data-label="Contract">{i.contractTitle||"-"}</td><td data-label="Issued" className="mono">{formatDate(i.issueDate)}</td><td data-label="Due" className="mono">{formatDate(i.dueDate)}</td>
               <td data-label="Amount" className="mono">{currency(i.amount)}</td><td data-label="Paid" className="mono">{currency(i.amountPaid)}</td><td data-label="Status"><Badge tone={invoiceTone(i.status)}>{i.status}</Badge></td>
               <td data-label="" className="actions-cell">
+                <button className="icon-btn" onClick={()=>onOpenInvoice(i.id)} title="View invoice details" aria-label="View invoice details"><Eye size={15}/></button>
                 <button className="icon-btn" onClick={()=>downloadInvoicePdf(i,farm)} title="Download invoice PDF" aria-label="Download invoice PDF"><Printer size={15}/></button>
                 <button className="icon-btn icon-btn--danger" onClick={()=>setConfirm({type:"invoice",id:i.id})} aria-label="Delete invoice"><Trash2 size={15}/></button>
               </td>
@@ -2565,7 +2627,7 @@ function PlannerPage({ animals, vaccinations, healthEvents, feedItems, invoices,
     feedItems.filter(f=>getFeedStatus(f).tone!=="success").forEach(f=>rows.push({
       id:`feed-${f.id}`,date:todayStr(),days:0,type:"Feed",title:`Restock ${f.feedType}`,detail:`${f.quantityKg} kg left · reorder at ${f.reorderLevel} kg`,target:"feed",
     }));
-    invoices.filter(i=>!["Paid","Cancelled"].includes(i.status)&&i.dueDate).forEach(i=>add({
+    invoices.filter(i=>isOpenInvoice(i)&&i.dueDate).forEach(i=>add({
       id:`invoice-${i.id}`,date:i.dueDate,type:i.direction==="Payable"?"Payment":"Collection",title:`${i.invoiceNumber} · ${i.partnerName}`,detail:`${currency(Math.max(i.amount-i.amountPaid,0))} outstanding`,target:"contracts",
     }));
     loans.filter(l=>l.status==="Active"&&l.dueDate).forEach(l=>add({
@@ -2689,8 +2751,13 @@ export default function FarmApp() {
   const [showSaleForm, setShowSaleForm]   = useState(false);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showPartnerForm, setShowPartnerForm] = useState(false);
+  const [editingPartnerId, setEditingPartnerId] = useState(null);
   const [showContractForm, setShowContractForm] = useState(false);
+  const [editingContractId, setEditingContractId] = useState(null);
   const [showInvoiceForm, setShowInvoiceForm] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState(null);
+  const [openInvoiceId, setOpenInvoiceId] = useState(null);
+  const [payingInvoiceId, setPayingInvoiceId] = useState(null);
   const [showLoanForm, setShowLoanForm] = useState(false);
   const [loanPaymentLoanId, setLoanPaymentLoanId] = useState(null);
   const [showAddUser, setShowAddUser]     = useState(false);
@@ -2770,11 +2837,17 @@ export default function FarmApp() {
   const addExpense=data=>runBackend(async()=>{ await api.createExpense(data); await refreshBackendData(); setShowExpenseForm(false); });
   const deleteExpense=id=>runBackend(async()=>{ await api.deleteExpense(id); await refreshBackendData(); });
   const addPartner=data=>runBackend(async()=>{ await api.createPartner(data); await refreshBackendData(); setShowPartnerForm(false); });
+  const editPartner=(id,data)=>runBackend(async()=>{ await api.updatePartner(id,data); await refreshBackendData(); setEditingPartnerId(null); });
   const deletePartner=id=>runBackend(async()=>{ await api.deletePartner(id); await refreshBackendData(); });
   const addContract=data=>runBackend(async()=>{ await api.createContract(data); await refreshBackendData(); setShowContractForm(false); });
+  const editContract=(id,data)=>runBackend(async()=>{ await api.updateContract(id,data); await refreshBackendData(); setEditingContractId(null); });
   const deleteContract=id=>runBackend(async()=>{ await api.deleteContract(id); await refreshBackendData(); });
   const addInvoice=data=>runBackend(async()=>{ await api.createInvoice(data); await refreshBackendData(); setShowInvoiceForm(false); });
-  const deleteInvoice=id=>runBackend(async()=>{ await api.deleteInvoice(id); await refreshBackendData(); });
+  const editInvoice=(id,data)=>runBackend(async()=>{ await api.updateInvoice(id,data); await refreshBackendData(); setEditingInvoiceId(null); setOpenInvoiceId(id); });
+  const deleteInvoice=id=>runBackend(async()=>{ await api.deleteInvoice(id); await refreshBackendData(); if(openInvoiceId===id)setOpenInvoiceId(null); });
+  const recordInvoicePayment=(id,data)=>runBackend(async()=>{ await api.recordInvoicePayment(id,data); await refreshBackendData(); setPayingInvoiceId(null); setOpenInvoiceId(id); });
+  const transitionInvoice=(id,action)=>runBackend(async()=>{ await api.transitionInvoice(id,action); await refreshBackendData(); });
+  const reverseInvoicePayment=(id,paymentId)=>runBackend(async()=>{ await api.reverseInvoicePayment(id,paymentId); await refreshBackendData(); });
   const addLoan=data=>runBackend(async()=>{ await api.createLoan(data); await refreshBackendData(); setShowLoanForm(false); });
   const deleteLoan=id=>runBackend(async()=>{ await api.deleteLoan(id); await refreshBackendData(); });
   const addLoanPayment=data=>runBackend(async()=>{ await api.createLoanPayment(data); await refreshBackendData(); setLoanPaymentLoanId(null); });
@@ -2792,6 +2865,11 @@ export default function FarmApp() {
   const openAnimal      = animals.find(a=>a.id===openAnimalId);
   const editingAnimal   = animals.find(a=>a.id===editingAnimalId);
   const editingUser     = users.find(u=>u.id===editingUserId);
+  const editingPartner  = partners.find(p=>p.id===editingPartnerId);
+  const editingContract = contracts.find(c=>c.id===editingContractId);
+  const editingInvoice  = invoices.find(i=>i.id===editingInvoiceId);
+  const openInvoice     = invoices.find(i=>i.id===openInvoiceId);
+  const payingInvoice   = invoices.find(i=>i.id===payingInvoiceId);
   const visibleSections = NAV_SECTIONS.map(s=>({...s,items:s.items.filter(i=>!i.adminOnly||currentUser?.role==="Admin")})).filter(s=>s.items.length);
 
   function openRecordVax(animalId)  { setDefaultAnimal(animalId); setOpenAnimalId(null); setShowVaxForm(true); }
@@ -2854,7 +2932,7 @@ export default function FarmApp() {
               {activeTab==="feed"         && <FeedPage feedItems={feedItems} onAdd={()=>setShowFeedForm(true)} onAdjust={adjustFeed} onDelete={deleteFeed}/>}
               {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
               {activeTab==="statement"    && <StatementPage animals={animals} sales={sales} expenses={expenses} loans={loans} invoices={invoices}/>}
-              {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} farm={farm} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
+              {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} farm={farm} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onEditPartner={setEditingPartnerId} onEditContract={setEditingContractId} onOpenInvoice={setOpenInvoiceId} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
               {activeTab==="loans"        && <LoansPage loans={loans} onAddLoan={()=>setShowLoanForm(true)} onAddPayment={id=>setLoanPaymentLoanId(id || "")} onDeleteLoan={deleteLoan} onDeletePayment={deleteLoanPayment}/>}
               {activeTab==="sales"        && <SalesPage sales={sales} farm={farm} onAdd={()=>setShowSaleForm(true)} onDelete={deleteSale}/>}
               {activeTab==="expenses"     && <ExpensesPage expenses={expenses} farm={farm} onAdd={()=>setShowExpenseForm(true)} onDelete={deleteExpense}/>}
@@ -2876,13 +2954,18 @@ export default function FarmApp() {
       {showSaleForm      && <Modal title="Record sale" onClose={()=>setShowSaleForm(false)}><SaleForm animals={animals} onSubmit={addSale} onClose={()=>setShowSaleForm(false)}/></Modal>}
       {showExpenseForm   && <Modal title="Add expense" onClose={()=>setShowExpenseForm(false)}><ExpenseForm onSubmit={addExpense} onClose={()=>setShowExpenseForm(false)}/></Modal>}
       {showPartnerForm   && <Modal title="Add trading partner" onClose={()=>setShowPartnerForm(false)}><PartnerForm onSubmit={addPartner} onClose={()=>setShowPartnerForm(false)}/></Modal>}
+      {editingPartner    && <Modal title="Edit trading partner" onClose={()=>setEditingPartnerId(null)}><PartnerForm initial={editingPartner} onSubmit={data=>editPartner(editingPartner.id,data)} onClose={()=>setEditingPartnerId(null)}/></Modal>}
       {showContractForm  && <Modal title="Add contract" onClose={()=>setShowContractForm(false)} wide><ContractForm partners={partners} onSubmit={addContract} onClose={()=>setShowContractForm(false)}/></Modal>}
+      {editingContract   && <Modal title="Edit contract" onClose={()=>setEditingContractId(null)} wide><ContractForm partners={partners} initial={editingContract} onSubmit={data=>editContract(editingContract.id,data)} onClose={()=>setEditingContractId(null)}/></Modal>}
       {showInvoiceForm   && <Modal title="Add invoice" onClose={()=>setShowInvoiceForm(false)} wide><InvoiceForm partners={partners} contracts={contracts} onSubmit={addInvoice} onClose={()=>setShowInvoiceForm(false)}/></Modal>}
+      {editingInvoice    && <Modal title="Edit invoice" onClose={()=>setEditingInvoiceId(null)} wide><InvoiceForm partners={partners} contracts={contracts} initial={editingInvoice} onSubmit={data=>editInvoice(editingInvoice.id,data)} onClose={()=>setEditingInvoiceId(null)}/></Modal>}
+      {payingInvoice     && <Modal title={payingInvoice.direction==="Receivable"?"Collect invoice payment":"Pay supplier invoice"} onClose={()=>setPayingInvoiceId(null)}><InvoicePaymentForm invoice={payingInvoice} onSubmit={data=>recordInvoicePayment(payingInvoice.id,data)} onClose={()=>setPayingInvoiceId(null)}/></Modal>}
       {showLoanForm      && <Modal title="Add loan" onClose={()=>setShowLoanForm(false)} wide><LoanForm onSubmit={addLoan} onClose={()=>setShowLoanForm(false)}/></Modal>}
       {loanPaymentLoanId !== null && <Modal title="Record loan payment" onClose={()=>setLoanPaymentLoanId(null)}><LoanPaymentForm loans={loans} selectedLoanId={loanPaymentLoanId} onSubmit={addLoanPayment} onClose={()=>setLoanPaymentLoanId(null)}/></Modal>}
       {showAddUser       && <Modal title="Add user" onClose={()=>setShowAddUser(false)}><AddUserForm existingUsers={users} onSubmit={addUser} onClose={()=>setShowAddUser(false)}/></Modal>}
       {editingUser       && <Modal title="Edit user" onClose={()=>setEditingUserId(null)}><EditUserForm user={editingUser} existingUsers={users} onSubmit={u=>editUser(editingUser.id,u)} onClose={()=>setEditingUserId(null)}/></Modal>}
       {openAnimal        && <AnimalDrawer animal={openAnimal} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} onClose={()=>setOpenAnimalId(null)} onRecordVax={openRecordVax} onLogGrowth={openLogGrowth} onLogHealth={openLogHealth} onEditAnimal={openEditAnimal}/>}
+      {openInvoice       && <InvoiceDetails invoice={openInvoice} farm={farm} onClose={()=>setOpenInvoiceId(null)} onEdit={()=>{setEditingInvoiceId(openInvoice.id);setOpenInvoiceId(null);}} onPayment={()=>{setPayingInvoiceId(openInvoice.id);setOpenInvoiceId(null);}} onTransition={action=>transitionInvoice(openInvoice.id,action)} onReversePayment={paymentId=>reverseInvoicePayment(openInvoice.id,paymentId)}/>}
     </div>
   );
 }
@@ -3122,6 +3205,15 @@ tr.clickable:hover { background:#F3EDDD; }
 .drawer__tab-body { padding:16px 22px 0;display:flex;flex-direction:column;gap:14px; }
 .section-head { display:flex;align-items:center;justify-content:space-between; }
 .drawer__quick-actions { display:flex;gap:8px;flex-wrap:wrap; }
+.invoice-drawer { max-width:650px; }
+.invoice-detail-summary { display:grid;grid-template-columns:repeat(4,1fr);gap:8px;background:var(--cream);margin:0 22px 14px;padding:12px;border-radius:10px; }
+.invoice-detail-summary > div { display:flex;flex-direction:column;gap:4px; }
+.invoice-detail-summary span:first-child { color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em; }
+.invoice-detail-summary strong { font:600 13px 'JetBrains Mono',monospace; }
+.invoice-detail-actions { display:flex;gap:7px;flex-wrap:wrap;margin:0 22px 4px;padding-bottom:14px;border-bottom:1px solid var(--line); }
+.detail-heading { font-family:'Zilla Slab',serif;font-size:15px;margin:0 0 6px; }
+.payment-row { display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin-top:7px; }
+.payment-row > div { display:flex;flex-direction:column;gap:3px; }
 .overview-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
 .overview-grid__item { background:var(--cream);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:3px; }
 .info-block { display:flex;align-items:flex-start;gap:8px;background:#F7EAC9;border-radius:8px;padding:10px 12px;color:#6B4A10; }
@@ -3187,6 +3279,7 @@ tr.clickable:hover { background:#F3EDDD; }
   .form-grid .span-2 { grid-column:span 1; }
   .drawer { max-width:100%; }
   .drawer__quick-stats { grid-template-columns:1fr 1fr; }
+  .invoice-detail-summary { grid-template-columns:1fr 1fr; }
   .form-grid input,.form-grid select,.form-grid textarea,.search-box input,.toolbar select,.login-card input { font-size:16px; }
   .btn,.btn--tiny { min-height:36px; }
   .icon-btn { padding:8px; }

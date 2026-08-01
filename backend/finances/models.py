@@ -76,6 +76,8 @@ class Invoice(models.Model):
         PART_PAID = "Part paid", "Part paid"
         PAID = "Paid", "Paid"
         OVERDUE = "Overdue", "Overdue"
+        RECALLED = "Recalled", "Recalled"
+        CLOSED = "Closed", "Closed"
         CANCELLED = "Cancelled", "Cancelled"
 
     farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="invoices")
@@ -101,6 +103,22 @@ class Invoice(models.Model):
     def __str__(self):
         return f"{self.invoice_number} {self.amount}"
 
+    @property
+    def outstanding_balance(self):
+        return max(self.amount - self.amount_paid, Decimal("0")).quantize(Decimal("0.01"))
+
+    def refresh_payment_status(self):
+        paid = self.payments.aggregate(total=models.Sum("amount"))["total"] or Decimal("0")
+        self.amount_paid = paid.quantize(Decimal("0.01"))
+        if self.status not in {self.Status.CANCELLED, self.Status.RECALLED, self.Status.CLOSED}:
+            if self.amount_paid >= self.amount:
+                self.status = self.Status.PAID
+            elif self.amount_paid > 0:
+                self.status = self.Status.PART_PAID
+            elif self.status == self.Status.PAID:
+                self.status = self.Status.ISSUED
+        self.save(update_fields=["amount_paid", "status"])
+
 
 class InvoiceItem(models.Model):
     invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="items")
@@ -120,6 +138,22 @@ class InvoiceItem(models.Model):
 
     def __str__(self):
         return f"{self.description} {self.line_total}"
+
+
+class InvoicePayment(models.Model):
+    invoice = models.ForeignKey(Invoice, on_delete=models.CASCADE, related_name="payments")
+    date = models.DateField()
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    method = models.CharField(max_length=80, blank=True)
+    reference = models.CharField(max_length=120, blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.invoice.invoice_number} payment {self.amount}"
 
 
 class Loan(models.Model):
@@ -205,6 +239,7 @@ class Sale(models.Model):
         EGGS = "Eggs", "Eggs"
         WOOL_HIDE = "Wool / hide", "Wool / hide"
         OTHER_PRODUCE = "Other produce", "Other produce"
+        INVOICE_COLLECTION = "Invoice collection", "Invoice collection"
         OTHER = "Other", "Other"
 
     farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="sales")
@@ -223,6 +258,13 @@ class Sale(models.Model):
     unit_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     buyer = models.CharField(max_length=160, blank=True)
     notes = models.TextField(blank=True)
+    invoice_payment = models.OneToOneField(
+        InvoicePayment,
+        on_delete=models.CASCADE,
+        related_name="sale_record",
+        null=True,
+        blank=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -242,6 +284,8 @@ class Expense(models.Model):
         EQUIPMENT = "Equipment", "Equipment"
         TRANSPORT = "Transport", "Transport"
         UTILITIES = "Utilities", "Utilities"
+        LOAN_PAYMENT = "Loan payment", "Loan payment"
+        SUPPLIER_INVOICE = "Supplier invoice", "Supplier invoice"
         OTHER = "Other", "Other"
 
     farm = models.ForeignKey("farms.Farm", on_delete=models.CASCADE, related_name="expenses")
@@ -263,6 +307,20 @@ class Expense(models.Model):
         "inventory.FeedItem",
         on_delete=models.SET_NULL,
         related_name="expenses",
+        null=True,
+        blank=True,
+    )
+    loan_payment = models.OneToOneField(
+        LoanPayment,
+        on_delete=models.CASCADE,
+        related_name="expense_record",
+        null=True,
+        blank=True,
+    )
+    invoice_payment = models.OneToOneField(
+        InvoicePayment,
+        on_delete=models.CASCADE,
+        related_name="expense_record",
         null=True,
         blank=True,
     )

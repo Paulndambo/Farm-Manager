@@ -6,7 +6,8 @@ from rest_framework import serializers
 from inventory.models import FeedItem
 from livestock.models import Animal
 
-from .models import Expense, FarmContract, Invoice, InvoiceItem, Loan, LoanPayment, Sale, TradingPartner
+from .models import Expense, FarmContract, Invoice, InvoiceItem, InvoicePayment, Loan, LoanPayment, Sale, TradingPartner
+from .services import record_invoice_payment
 
 
 class TradingPartnerSerializer(serializers.ModelSerializer):
@@ -64,6 +65,15 @@ class InvoiceItemSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "lineTotal"]
 
 
+class InvoicePaymentSerializer(serializers.ModelSerializer):
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = InvoicePayment
+        fields = ["id", "date", "amount", "method", "reference", "notes", "createdAt"]
+        read_only_fields = ["id", "createdAt"]
+
+
 class InvoiceSerializer(serializers.ModelSerializer):
     partnerId = serializers.PrimaryKeyRelatedField(source="partner", queryset=TradingPartner.objects.all())
     partnerName = serializers.CharField(source="partner.name", read_only=True)
@@ -74,6 +84,10 @@ class InvoiceSerializer(serializers.ModelSerializer):
     dueDate = serializers.DateField(source="due_date", required=False, allow_null=True)
     amountPaid = serializers.DecimalField(source="amount_paid", max_digits=12, decimal_places=2, required=False)
     items = InvoiceItemSerializer(many=True)
+    payments = InvoicePaymentSerializer(many=True, read_only=True)
+    outstandingBalance = serializers.DecimalField(
+        source="outstanding_balance", max_digits=12, decimal_places=2, read_only=True
+    )
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
 
     class Meta:
@@ -94,6 +108,8 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "status",
             "notes",
             "items",
+            "payments",
+            "outstandingBalance",
             "createdAt",
         ]
         read_only_fields = ["amount"]
@@ -111,6 +127,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         partner = attrs.get("partner") or getattr(self.instance, "partner", None)
         contract = attrs.get("contract") or getattr(self.instance, "contract", None)
+        if self.instance and self.instance.payments.exists():
+            next_direction = attrs.get("direction", self.instance.direction)
+            if next_direction != self.instance.direction:
+                raise serializers.ValidationError(
+                    {"direction": "Reverse invoice payments before changing invoice direction."}
+                )
         if contract and partner and contract.partner_id != partner.id:
             raise serializers.ValidationError("Invoice contract must belong to the selected partner.")
         items = attrs.get("items")
@@ -121,19 +143,42 @@ class InvoiceSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         items = validated_data.pop("items")
-        invoice = Invoice.objects.create(**validated_data, amount=0)
+        opening_paid = validated_data.pop("amount_paid", Decimal("0"))
+        invoice = Invoice.objects.create(**validated_data, amount=0, amount_paid=0)
         self._replace_items(invoice, items)
+        if opening_paid:
+            record_invoice_payment(
+                invoice,
+                date=invoice.issue_date,
+                amount=opening_paid,
+                notes="Opening payment recorded with invoice",
+            )
         return invoice
 
     @transaction.atomic
     def update(self, instance, validated_data):
+        validated_data.pop("amount_paid", None)
         items = validated_data.pop("items", None)
         for field, value in validated_data.items():
             setattr(instance, field, value)
         instance.save()
         if items is not None:
+            if instance.payments.exists():
+                new_total = sum(
+                    (
+                        (item.get("quantity") or Decimal("0"))
+                        * (item.get("unit_price") or Decimal("0"))
+                        for item in items
+                    ),
+                    start=Decimal("0"),
+                )
+                if new_total < instance.amount_paid:
+                    raise serializers.ValidationError(
+                        {"items": "Invoice total cannot be reduced below the amount already paid."}
+                    )
             instance.items.all().delete()
             self._replace_items(instance, items)
+            instance.refresh_payment_status()
         return instance
 
     def _replace_items(self, invoice, items):
@@ -228,10 +273,11 @@ class SaleSerializer(serializers.ModelSerializer):
     animalLabel = serializers.SerializerMethodField()
     unitPrice = serializers.DecimalField(source="unit_price", max_digits=12, decimal_places=2, required=False, allow_null=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    invoicePaymentId = serializers.IntegerField(source="invoice_payment_id", read_only=True)
 
     class Meta:
         model = Sale
-        fields = ["id", "saleType", "animalId", "animalLabel", "description", "date", "amount", "quantity", "unitPrice", "buyer", "notes", "createdAt"]
+        fields = ["id", "saleType", "animalId", "animalLabel", "description", "date", "amount", "quantity", "unitPrice", "buyer", "notes", "invoicePaymentId", "createdAt"]
 
     def get_animalLabel(self, obj):
         if not obj.animal:
@@ -249,10 +295,12 @@ class ExpenseSerializer(serializers.ModelSerializer):
     animalId = serializers.PrimaryKeyRelatedField(source="animal", queryset=Animal.objects.all(), required=False, allow_null=True)
     feedItemId = serializers.PrimaryKeyRelatedField(source="feed_item", queryset=FeedItem.objects.all(), required=False, allow_null=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    loanPaymentId = serializers.IntegerField(source="loan_payment_id", read_only=True)
+    invoicePaymentId = serializers.IntegerField(source="invoice_payment_id", read_only=True)
 
     class Meta:
         model = Expense
-        fields = ["id", "category", "description", "date", "amount", "vendor", "notes", "autoLogged", "animalId", "feedItemId", "createdAt"]
+        fields = ["id", "category", "description", "date", "amount", "vendor", "notes", "autoLogged", "animalId", "feedItemId", "loanPaymentId", "invoicePaymentId", "createdAt"]
 
     def validate_animalId(self, animal):
         if animal and animal.farm_id != self.context["request"].user.farm_id:

@@ -112,6 +112,11 @@ function normalizeInvoice(invoice) {
     ...invoice,
     amount: toNumber(invoice.amount) || 0,
     amountPaid: toNumber(invoice.amountPaid) || 0,
+    outstandingBalance: toNumber(invoice.outstandingBalance) || 0,
+    payments: (invoice.payments || []).map(payment => ({
+      ...payment,
+      amount: toNumber(payment.amount) || 0,
+    })),
     items: (invoice.items || []).map(item => ({
       ...item,
       quantity: toNumber(item.quantity) || 0,
@@ -321,6 +326,13 @@ export const api = {
     });
   },
 
+  updatePartner(id, data) {
+    return request(`/partners/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
   deletePartner(id) {
     return request(`/partners/${id}/`, { method: "DELETE" });
   },
@@ -328,6 +340,17 @@ export const api = {
   createContract(data) {
     return request("/contracts/", {
       method: "POST",
+      body: JSON.stringify({
+        ...data,
+        endDate: nullIfBlank(data.endDate),
+        agreedRate: data.agreedRate === "" ? null : data.agreedRate,
+      }),
+    }).then(normalizeContract);
+  },
+
+  updateContract(id, data) {
+    return request(`/contracts/${id}/`, {
+      method: "PATCH",
       body: JSON.stringify({
         ...data,
         endDate: nullIfBlank(data.endDate),
@@ -353,6 +376,43 @@ export const api = {
           unitPrice: item.unitPrice || 0,
         })),
       }),
+    }).then(normalizeInvoice);
+  },
+
+  updateInvoice(id, data) {
+    return request(`/invoices/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        ...data,
+        contractId: data.contractId || null,
+        dueDate: nullIfBlank(data.dueDate),
+        items: data.items.map(item => ({
+          ...item,
+          quantity: item.quantity || 0,
+          unitPrice: item.unitPrice || 0,
+        })),
+      }),
+    }).then(normalizeInvoice);
+  },
+
+  recordInvoicePayment(id, data) {
+    return request(`/invoices/${id}/record-payment/`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    }).then(normalizeInvoice);
+  },
+
+  reverseInvoicePayment(id, paymentId) {
+    return request(`/invoices/${id}/reverse-payment/`, {
+      method: "POST",
+      body: JSON.stringify({ paymentId }),
+    }).then(normalizeInvoice);
+  },
+
+  transitionInvoice(id, action) {
+    return request(`/invoices/${id}/transition/`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
     }).then(normalizeInvoice);
   },
 
