@@ -23,6 +23,7 @@ const ORIGIN_OPTIONS = ["Born in herd","Purchased"];
 const ROLE_OPTIONS = ["Admin","Manager","Worker"];
 const GENDER_OPTIONS = ["", "Female", "Male", "Other", "Prefer not to say"];
 const HEALTH_EVENT_TYPES = ["Observation","Treatment","Injury","Illness","Recovery","Other"];
+const PRODUCTION_TYPES = ["Milk","Eggs","Wool / hide","Honey","Other"];
 const SALE_TYPES     = ["Animal sale","Milk / dairy","Eggs","Wool / hide","Other produce","Other"];
 const EXPENSE_CATS   = ["Animal purchase","Feed purchase","Veterinary","Medication","Labor","Equipment","Transport","Utilities","Other"];
 const PARTNER_TYPES  = ["Supplier","Customer","Both"];
@@ -61,6 +62,7 @@ const PAGE_TITLES = {
   animals:      "Livestock Register",
   vaccinations: "Vaccination Records",
   growth:       "Growth Tracking",
+  production:   "Production Tracking",
   feed:         "Feed Inventory",
   finances:     "Finances",
   statement:    "Farm Statement",
@@ -417,6 +419,46 @@ function GrowthForm({ animals, defaultAnimalId, onSubmit, onClose }) {
   );
 }
 
+function ProductionForm({ animals, defaultAnimalId, onSubmit, onClose }) {
+  const [form, setForm] = useState({
+    animalId: defaultAnimalId || (animals[0]?.id || ""), productionType:"Milk", date:todayStr(), quantity:"", unit:"litres", notes:"",
+  });
+  const set = k => e => setForm(f=>({...f,[k]:e.target.value}));
+  const lockedAnimal = defaultAnimalId ? animals.find(a=>String(a.id)===String(defaultAnimalId)) : null;
+
+  if (!animals.length) return (
+    <div><p className="confirm-body">Add at least one animal before logging production.</p>
+      <div className="form-actions"><button className="btn btn--ghost" onClick={onClose}>Close</button></div></div>
+  );
+
+  return (
+    <form onSubmit={e=>{e.preventDefault();if(!form.quantity)return;onSubmit({...form,quantity:parseFloat(form.quantity)});}}>
+      <div className="form-grid">
+        {defaultAnimalId ? <SelectedAnimalField animal={lockedAnimal}/> : (
+          <label className="span-2">Animal *
+            <select value={form.animalId} onChange={set("animalId")}>
+              {animals.map(a=><option key={a.id} value={a.id}>{a.tagId}{a.name?` — ${a.name}`:""} ({a.species})</option>)}
+            </select>
+          </label>
+        )}
+        <label>Production type *
+          <select value={form.productionType} onChange={set("productionType")}>
+            {PRODUCTION_TYPES.map(type=><option key={type}>{type}</option>)}
+          </select>
+        </label>
+        <label>Date *<input type="date" value={form.date} onChange={set("date")} max={todayStr()} required/></label>
+        <label>Quantity *<input type="number" min="0" step="0.01" value={form.quantity} onChange={set("quantity")} required/></label>
+        <label>Unit *<input value={form.unit} onChange={set("unit")} placeholder="e.g. litres, trays, kg" required/></label>
+        <label className="span-2">Notes<textarea rows={2} value={form.notes} onChange={set("notes")} placeholder="Collection time, quality, observations…"/></label>
+      </div>
+      <div className="form-actions">
+        <button type="button" className="btn btn--ghost" onClick={onClose}>Cancel</button>
+        <button type="submit" className="btn btn--primary"><Plus size={15}/>Log production</button>
+      </div>
+    </form>
+  );
+}
+
 function HealthEventForm({ animals, defaultAnimalId, onSubmit, onClose }) {
   const [form, setForm] = useState({
     animalId: defaultAnimalId || (animals[0]?.id || ""),
@@ -565,10 +607,11 @@ function EditUserForm({ user, existingUsers, onSubmit, onClose }) {
 }
 
 // ─── Animal detail drawer ──────────────────────────────────────────────────────
-function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClose, onRecordVax, onLogGrowth, onLogHealth, onEditAnimal }) {
+function AnimalDrawer({ animal, vaccinations, growthRecords, productionRecords, healthEvents, onClose, onRecordVax, onLogGrowth, onLogProduction, onLogHealth, onEditAnimal, isPage = false }) {
   const [tab, setTab] = useState("overview");
   const vax     = vaccinations.filter(v=>v.animalId===animal.id).sort((a,b)=>a.dateGiven<b.dateGiven?1:-1);
   const growth  = growthRecords.filter(g=>g.animalId===animal.id).sort((a,b)=>a.date<b.date?-1:1);
+  const production = productionRecords.filter(r=>r.animalId===animal.id).sort((a,b)=>a.date<b.date?-1:1);
   const health  = healthEvents.filter(h=>h.animalId===animal.id).sort((a,b)=>a.date<b.date?1:-1);
   const chartData = growth.map(g=>({label:formatDate(g.date),weight:g.weightKg}));
   const openIssues = health.filter(h=>!h.resolved).length;
@@ -584,13 +627,14 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
   const TABS = [
     { key:"overview",  label:"Overview" },
     { key:"growth",    label:`Growth${growth.length?` (${growth.length})`:""}` },
+    { key:"production",label:`Production${production.length?` (${production.length})`:""}` },
     { key:"vax",       label:`Vaccines${vax.length?` (${vax.length})`:""}` },
     { key:"health",    label:`Health${openIssues?` ⚠ ${openIssues}`:(health.length?` (${health.length})`:"")}` },
   ];
 
   return (
-    <div className="drawer-overlay" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="drawer">
+    <div className={isPage ? "animal-profile-page" : "drawer-overlay"} onMouseDown={e=>!isPage&&e.target===e.currentTarget&&onClose()}>
+      <div className={`drawer${isPage ? " animal-profile" : ""}`}>
         <div className="drawer__header">
           <div>
             <EarTag size="lg">{animal.tagId}</EarTag>
@@ -644,6 +688,7 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
             <div className="drawer__quick-actions">
               <button className="btn btn--ghost btn--sm" onClick={()=>onLogHealth(animal.id)}><Activity size={14}/>Log health event</button>
               <button className="btn btn--ghost btn--sm" onClick={()=>onLogGrowth(animal.id)}><TrendingUp size={14}/>Log weight</button>
+              <button className="btn btn--ghost btn--sm" onClick={()=>onLogProduction(animal.id)}><ClipboardList size={14}/>Log production</button>
               <button className="btn btn--ghost btn--sm" onClick={()=>onRecordVax(animal.id)}><Syringe size={14}/>Record vaccination</button>
             </div>
           </div>
@@ -692,6 +737,18 @@ function AnimalDrawer({ animal, vaccinations, growthRecords, healthEvents, onClo
               </table>
             )}
             {growth.length===0 && <p className="muted small">No weigh-ins recorded yet.</p>}
+          </div>
+        )}
+
+        {tab==="production" && (
+          <div className="drawer__tab-body">
+            <div className="section-head"><span/><button className="btn btn--tiny" onClick={()=>onLogProduction(animal.id)}><Plus size={13}/>Log production</button></div>
+            {production.length===0 ? <p className="muted small">No production records recorded yet.</p> : (
+              <table className="mini-table">
+                <thead><tr><th>Date</th><th>Type</th><th>Quantity</th><th>Notes</th></tr></thead>
+                <tbody>{production.map(r=><tr key={r.id}><td className="mono">{formatDate(r.date)}</td><td>{r.productionType}</td><td className="mono">{r.quantity} {r.unit}</td><td className="muted">{r.notes||"—"}</td></tr>)}</tbody>
+              </table>
+            )}
           </div>
         )}
 
@@ -1279,6 +1336,67 @@ function GrowthPage({ animals, growthRecords, onAdd, onDelete }) {
         </div>
       )}
       {confirmId&&<ConfirmDialog title="Delete growth record" body="This removes the weigh-in permanently." onCancel={()=>setConfirmId(null)} onConfirm={()=>{onDelete(confirmId);setConfirmId(null);}}/>}
+    </div>
+  );
+}
+
+function ProductionPage({ animals, productionRecords, onAdd, onDelete }) {
+  const [selectedId, setSelectedId] = useState(animals[0]?.id != null ? String(animals[0].id) : "");
+  const [selectedType, setSelectedType] = useState(PRODUCTION_TYPES[0]);
+  const [confirmId, setConfirmId] = useState(null);
+  const animal = animals.find(a=>String(a.id)===selectedId) || animals[0] || null;
+  const animalRecords = productionRecords.filter(r=>String(r.animalId)===String(animal?.id));
+  const recordTypes = [...new Set(animalRecords.map(r=>r.productionType))];
+  const activeType = recordTypes.includes(selectedType) ? selectedType : (recordTypes[0] || selectedType);
+  const records = animalRecords.filter(r=>r.productionType===activeType).sort((a,b)=>a.date<b.date?-1:1);
+  const chartData = records.map(r=>({label:formatDate(r.date), quantity:r.quantity}));
+  const unit = records[0]?.unit || "units";
+
+  return (
+    <div className="page">
+      <div className="toolbar">
+        <select value={animal ? String(animal.id) : ""} onChange={e=>setSelectedId(e.target.value)} disabled={!animals.length}>
+          {!animals.length&&<option>No animals yet</option>}
+          {animals.map(a=><option key={a.id} value={String(a.id)}>{a.tagId}{a.name?` — ${a.name}`:""}</option>)}
+        </select>
+        <select value={activeType} onChange={e=>setSelectedType(e.target.value)} disabled={!animals.length}>
+          {PRODUCTION_TYPES.map(type=><option key={type}>{type}</option>)}
+        </select>
+        <button className="btn btn--primary" onClick={onAdd}><Plus size={15}/>Log production</button>
+      </div>
+      {!animals.length ? <EmptyState icon={ClipboardList} title="No animals to track" body="Add an animal first, then capture its production."/> : (
+        <div className="panel">
+          <div className="panel__head"><h3>{`${animal.tagId}${animal.name?" · "+animal.name:""} — ${activeType.toLowerCase()} over time`}</h3></div>
+          {chartData.length<2 ? <p className="muted small">Log at least two {activeType.toLowerCase()} records to see a chart.</p> : (
+            <div style={{height:220}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{top:8,right:16,left:-18,bottom:0}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#E4DCC8"/>
+                  <XAxis dataKey="label" tick={{fontSize:10,fill:"#8A7B62"}}/>
+                  <YAxis tick={{fontSize:10,fill:"#8A7B62"}} width={36}/>
+                  <Tooltip contentStyle={{fontFamily:"Inter,sans-serif",fontSize:12,borderRadius:8,border:"1px solid #E4DCC8"}}/>
+                  <Line type="monotone" dataKey="quantity" name={`${activeType} (${unit})`} stroke="#3F5D45" strokeWidth={2} dot={{r:3}}/>
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+          {records.length>0 && (
+            <div className="table-wrap" style={{marginTop:16}}>
+              <table>
+                <thead><tr><th>Date</th><th>Production</th><th>Quantity</th><th>Unit</th><th>Notes</th><th/></tr></thead>
+                <tbody>{records.map(r=>(
+                  <tr key={r.id}>
+                    <td className="mono">{formatDate(r.date)}</td><td>{r.productionType}</td><td className="mono">{r.quantity}</td><td>{r.unit}</td><td className="muted">{r.notes||"—"}</td>
+                    <td className="actions-cell"><button className="icon-btn icon-btn--danger" onClick={()=>setConfirmId(r.id)} aria-label="Delete"><Trash2 size={15}/></button></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          )}
+          {records.length===0 && <p className="muted small" style={{marginTop:16}}>No {activeType.toLowerCase()} records for this animal yet.</p>}
+        </div>
+      )}
+      {confirmId&&<ConfirmDialog title="Delete production record" body="This removes the production record permanently." onCancel={()=>setConfirmId(null)} onConfirm={()=>{onDelete(confirmId);setConfirmId(null);}}/>}
     </div>
   );
 }
@@ -2702,6 +2820,7 @@ const NAV_SECTIONS = [
     {key:"animals",      label:"Animals",      icon:PawPrint},
     {key:"vaccinations", label:"Vaccinations", icon:Syringe},
     {key:"growth",       label:"Growth",       icon:TrendingUp},
+    {key:"production",   label:"Production",   icon:ClipboardList},
     {key:"feed",         label:"Feed stock",   icon:Wheat},
   ]},
   { label:"Finance", items:[
@@ -2720,13 +2839,17 @@ const NAV_SECTIONS = [
 ];
 
 // ─── App ──────────────────────────────────────────────────────────────────────
-export default function FarmApp() {
+export default function FarmApp({ routePath = "/dashboard", onRouteChange = () => {} }) {
+  const routeParts = routePath.replace(/^\/dashboard\/?/, "").split("/").filter(Boolean);
+  const routeAnimalId = routeParts[0] === "animals" && routeParts[1] ? routeParts[1] : null;
+  const routeTab = routeAnimalId ? "animals" : (routeParts[0] || "dashboard");
   const [loading, setLoading]           = useState(true);
-  const [activeTab, setActiveTab]       = useState("dashboard");
+  const [activeTab, setActiveTab]       = useState(routeTab);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [animals, setAnimals]           = useState([]);
   const [vaccinations, setVaccinations] = useState([]);
   const [growthRecords, setGrowthRecords] = useState([]);
+  const [productionRecords, setProductionRecords] = useState([]);
   const [healthEvents, setHealthEvents] = useState([]);
   const [feedItems, setFeedItems]       = useState([]);
   const [sales, setSales]               = useState([]);
@@ -2746,6 +2869,7 @@ export default function FarmApp() {
   const [editingAnimalId, setEditingAnimalId] = useState(null);
   const [showVaxForm, setShowVaxForm]     = useState(false);
   const [showGrowthForm, setShowGrowthForm] = useState(false);
+  const [showProductionForm, setShowProductionForm] = useState(false);
   const [showHealthForm, setShowHealthForm] = useState(false);
   const [showFeedForm, setShowFeedForm]   = useState(false);
   const [showSaleForm, setShowSaleForm]   = useState(false);
@@ -2763,7 +2887,10 @@ export default function FarmApp() {
   const [showAddUser, setShowAddUser]     = useState(false);
   const [editingUserId, setEditingUserId] = useState(null);
   const [defaultAnimal, setDefaultAnimal] = useState(null);
-  const [openAnimalId, setOpenAnimalId]   = useState(null);
+
+  useEffect(() => {
+    setActiveTab(routeTab);
+  }, [routeTab]);
 
   useEffect(()=>{
     (async()=>{
@@ -2786,7 +2913,7 @@ export default function FarmApp() {
     const data = await api.loadAll(user);
     setFarm(data.farm);
     setCurrentUser(current => current ? { ...current, farm: data.farm } : current);
-    setAnimals(data.animals); setVaccinations(data.vaccinations); setGrowthRecords(data.growthRecords);
+    setAnimals(data.animals); setVaccinations(data.vaccinations); setGrowthRecords(data.growthRecords); setProductionRecords(data.productionRecords);
     setHealthEvents(data.healthEvents); setFeedItems(data.feedItems);
     setSales(data.sales); setExpenses(data.expenses); setPartners(data.partners);
     setContracts(data.contracts); setInvoices(data.invoices); setLoans(data.loans); setUsers(data.users);
@@ -2819,15 +2946,23 @@ export default function FarmApp() {
     setApiError("");
   };
 
-  const handleLogout=()=>{ api.clearTokens(); setCurrentUser(null); setFarm(null); setMobileNavOpen(false); setActiveTab("dashboard"); };
+  const navigateToTab = tab => {
+    setActiveTab(tab);
+    onRouteChange(tab === "dashboard" ? "/dashboard" : `/dashboard/${tab}`);
+  };
+  const openAnimalProfile = animalId => onRouteChange(`/dashboard/animals/${animalId}`);
+  const closeAnimalProfile = () => onRouteChange("/dashboard/animals");
+  const handleLogout=()=>{ api.clearTokens(); setCurrentUser(null); setFarm(null); setMobileNavOpen(false); onRouteChange("/", { replace:true }); };
 
   const addAnimal=data=>runBackend(async()=>{ await api.createAnimal(data); await refreshBackendData(); setShowAnimalForm(false); });
   const editAnimal=(id,data)=>runBackend(async()=>{ await api.updateAnimal(id,data); await refreshBackendData(); setEditingAnimalId(null); });
-  const deleteAnimal=id=>runBackend(async()=>{ await api.deleteAnimal(id); await refreshBackendData(); if(openAnimalId===id) setOpenAnimalId(null); });
+  const deleteAnimal=id=>runBackend(async()=>{ await api.deleteAnimal(id); await refreshBackendData(); if(String(routeAnimalId)===String(id)) closeAnimalProfile(); });
   const addVaccination=data=>runBackend(async()=>{ await api.createVaccination(data); await refreshBackendData(); setShowVaxForm(false); });
   const deleteVaccination=id=>runBackend(async()=>{ await api.deleteVaccination(id); await refreshBackendData(); });
   const addGrowth=data=>runBackend(async()=>{ await api.createGrowthRecord(data); await refreshBackendData(); setShowGrowthForm(false); });
   const deleteGrowth=id=>runBackend(async()=>{ await api.deleteGrowthRecord(id); await refreshBackendData(); });
+  const addProduction=data=>runBackend(async()=>{ await api.createProductionRecord(data); await refreshBackendData(); setShowProductionForm(false); });
+  const deleteProduction=id=>runBackend(async()=>{ await api.deleteProductionRecord(id); await refreshBackendData(); });
   const addHealthEvent=data=>runBackend(async()=>{ await api.createHealthEvent(data); await refreshBackendData(); setShowHealthForm(false); });
   const addFeed=data=>runBackend(async()=>{ await api.createFeedItem(data); await refreshBackendData(); setShowFeedForm(false); });
   const adjustFeed=(id,delta)=>runBackend(async()=>{ await api.adjustFeedItem(id, delta > 0 ? "restock" : "use", Math.abs(delta)); await refreshBackendData(); });
@@ -2862,7 +2997,7 @@ export default function FarmApp() {
     setCurrentUser(user => user ? { ...user, farm: updated } : user);
   });
 
-  const openAnimal      = animals.find(a=>a.id===openAnimalId);
+  const openAnimal      = animals.find(a=>String(a.id)===String(routeAnimalId));
   const editingAnimal   = animals.find(a=>a.id===editingAnimalId);
   const editingUser     = users.find(u=>u.id===editingUserId);
   const editingPartner  = partners.find(p=>p.id===editingPartnerId);
@@ -2872,10 +3007,11 @@ export default function FarmApp() {
   const payingInvoice   = invoices.find(i=>i.id===payingInvoiceId);
   const visibleSections = NAV_SECTIONS.map(s=>({...s,items:s.items.filter(i=>!i.adminOnly||currentUser?.role==="Admin")})).filter(s=>s.items.length);
 
-  function openRecordVax(animalId)  { setDefaultAnimal(animalId); setOpenAnimalId(null); setShowVaxForm(true); }
-  function openLogGrowth(animalId)  { setDefaultAnimal(animalId); setOpenAnimalId(null); setShowGrowthForm(true); }
-  function openLogHealth(animalId)  { setDefaultAnimal(animalId); setOpenAnimalId(null); setShowHealthForm(true); }
-  function openEditAnimal(animalId) { setEditingAnimalId(animalId); setOpenAnimalId(null); }
+  function openRecordVax(animalId)  { setDefaultAnimal(animalId); closeAnimalProfile(); setShowVaxForm(true); }
+  function openLogGrowth(animalId)  { setDefaultAnimal(animalId); closeAnimalProfile(); setShowGrowthForm(true); }
+  function openLogProduction(animalId) { setDefaultAnimal(animalId); closeAnimalProfile(); setShowProductionForm(true); }
+  function openLogHealth(animalId)  { setDefaultAnimal(animalId); closeAnimalProfile(); setShowHealthForm(true); }
+  function openEditAnimal(animalId) { setEditingAnimalId(animalId); closeAnimalProfile(); }
 
   return (
     <div className="farm-app">
@@ -2899,7 +3035,7 @@ export default function FarmApp() {
                   {section.label&&<div className="nav-section__label">{section.label}</div>}
                   {section.items.map(item=>(
                     <button key={item.key} className={`sidebar__nav-item${activeTab===item.key?" is-active":""}`}
-                      onClick={()=>{ setActiveTab(item.key); setMobileNavOpen(false); }}>
+                      onClick={()=>{ navigateToTab(item.key); setMobileNavOpen(false); }}>
                       <item.icon size={17} strokeWidth={2}/>{item.label}
                     </button>
                   ))}
@@ -2913,7 +3049,7 @@ export default function FarmApp() {
             <header className="topbar">
               <div className="topbar__title-row">
                 <button className="icon-btn hamburger-btn" onClick={()=>setMobileNavOpen(true)} aria-label="Open menu"><Menu size={20}/></button>
-                <h1>{PAGE_TITLES[activeTab]}</h1>
+                <h1>{openAnimal ? `${openAnimal.tagId}${openAnimal.name ? ` · ${openAnimal.name}` : ""}` : PAGE_TITLES[activeTab]}</h1>
               </div>
               <div className="topbar__user">
                 <span className="avatar">{initials(currentUser.name)}</span>
@@ -2923,14 +3059,16 @@ export default function FarmApp() {
             </header>
             <div className="content">
               {apiError && <div className="form-error" style={{marginBottom:16}}>{apiError}</div>}
-              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} invoices={invoices} onNavigate={setActiveTab}/>}
-              {activeTab==="planner"      && <PlannerPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} invoices={invoices} loans={loans} contracts={contracts} onNavigate={setActiveTab} onOpenAnimal={setOpenAnimalId}/>}
-              {activeTab==="livestock"    && <LivestockOverviewPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} onNavigate={setActiveTab}/>}
-              {activeTab==="animals"      && <AnimalsPage animals={animals} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={setOpenAnimalId}/>}
+              {openAnimal && <AnimalDrawer isPage animal={openAnimal} vaccinations={vaccinations} growthRecords={growthRecords} productionRecords={productionRecords} healthEvents={healthEvents} onClose={closeAnimalProfile} onRecordVax={openRecordVax} onLogGrowth={openLogGrowth} onLogProduction={openLogProduction} onLogHealth={openLogHealth} onEditAnimal={openEditAnimal}/>}
+              {activeTab==="dashboard"    && <DashboardPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} sales={sales} expenses={expenses} loans={loans} invoices={invoices} onNavigate={navigateToTab}/>}
+              {activeTab==="planner"      && <PlannerPage animals={animals} vaccinations={vaccinations} healthEvents={healthEvents} feedItems={feedItems} invoices={invoices} loans={loans} contracts={contracts} onNavigate={navigateToTab} onOpenAnimal={openAnimalProfile}/>}
+              {activeTab==="livestock"    && <LivestockOverviewPage animals={animals} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} feedItems={feedItems} onNavigate={navigateToTab}/>}
+              {activeTab==="animals" && !openAnimal && <AnimalsPage animals={animals} healthEvents={healthEvents} onAdd={()=>setShowAnimalForm(true)} onDelete={deleteAnimal} onOpen={openAnimalProfile}/>}
               {activeTab==="vaccinations" && <VaccinationsPage animals={animals} vaccinations={vaccinations} onAdd={()=>{setDefaultAnimal(null);setShowVaxForm(true);}} onDelete={deleteVaccination}/>}
               {activeTab==="growth"       && <GrowthPage animals={animals} growthRecords={growthRecords} onAdd={()=>{setDefaultAnimal(null);setShowGrowthForm(true);}} onDelete={deleteGrowth}/>}
+              {activeTab==="production"   && <ProductionPage animals={animals} productionRecords={productionRecords} onAdd={()=>{setDefaultAnimal(null);setShowProductionForm(true);}} onDelete={deleteProduction}/>}
               {activeTab==="feed"         && <FeedPage feedItems={feedItems} onAdd={()=>setShowFeedForm(true)} onAdjust={adjustFeed} onDelete={deleteFeed}/>}
-              {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} loans={loans} onNavigate={setActiveTab}/>}
+              {activeTab==="finances"     && <FinancesPage sales={sales} expenses={expenses} loans={loans} onNavigate={navigateToTab}/>}
               {activeTab==="statement"    && <StatementPage animals={animals} sales={sales} expenses={expenses} loans={loans} invoices={invoices}/>}
               {activeTab==="contracts"    && <ContractsPage partners={partners} contracts={contracts} invoices={invoices} farm={farm} onAddPartner={()=>setShowPartnerForm(true)} onAddContract={()=>setShowContractForm(true)} onAddInvoice={()=>setShowInvoiceForm(true)} onEditPartner={setEditingPartnerId} onEditContract={setEditingContractId} onOpenInvoice={setOpenInvoiceId} onDeletePartner={deletePartner} onDeleteContract={deleteContract} onDeleteInvoice={deleteInvoice}/>}
               {activeTab==="loans"        && <LoansPage loans={loans} onAddLoan={()=>setShowLoanForm(true)} onAddPayment={id=>setLoanPaymentLoanId(id || "")} onDeleteLoan={deleteLoan} onDeletePayment={deleteLoanPayment}/>}
@@ -2949,6 +3087,7 @@ export default function FarmApp() {
       {editingAnimal     && <Modal title="Edit animal" onClose={()=>setEditingAnimalId(null)}><AnimalForm initial={editingAnimal} onSubmit={d=>editAnimal(editingAnimal.id,d)} onClose={()=>setEditingAnimalId(null)}/></Modal>}
       {showVaxForm       && <Modal title="Record vaccination" onClose={()=>setShowVaxForm(false)}><VaccinationForm animals={animals} defaultAnimalId={defaultAnimal} onSubmit={addVaccination} onClose={()=>setShowVaxForm(false)}/></Modal>}
       {showGrowthForm    && <Modal title="Log weight" onClose={()=>setShowGrowthForm(false)}><GrowthForm animals={animals} defaultAnimalId={defaultAnimal} onSubmit={addGrowth} onClose={()=>setShowGrowthForm(false)}/></Modal>}
+      {showProductionForm && <Modal title="Log production" onClose={()=>setShowProductionForm(false)}><ProductionForm animals={animals} defaultAnimalId={defaultAnimal} onSubmit={addProduction} onClose={()=>setShowProductionForm(false)}/></Modal>}
       {showHealthForm    && <Modal title="Log health event" onClose={()=>setShowHealthForm(false)}><HealthEventForm animals={animals} defaultAnimalId={defaultAnimal} onSubmit={addHealthEvent} onClose={()=>setShowHealthForm(false)}/></Modal>}
       {showFeedForm      && <Modal title="Add feed item" onClose={()=>setShowFeedForm(false)}><FeedForm onSubmit={addFeed} onClose={()=>setShowFeedForm(false)}/></Modal>}
       {showSaleForm      && <Modal title="Record sale" onClose={()=>setShowSaleForm(false)}><SaleForm animals={animals} onSubmit={addSale} onClose={()=>setShowSaleForm(false)}/></Modal>}
@@ -2964,7 +3103,6 @@ export default function FarmApp() {
       {loanPaymentLoanId !== null && <Modal title="Record loan payment" onClose={()=>setLoanPaymentLoanId(null)}><LoanPaymentForm loans={loans} selectedLoanId={loanPaymentLoanId} onSubmit={addLoanPayment} onClose={()=>setLoanPaymentLoanId(null)}/></Modal>}
       {showAddUser       && <Modal title="Add user" onClose={()=>setShowAddUser(false)}><AddUserForm existingUsers={users} onSubmit={addUser} onClose={()=>setShowAddUser(false)}/></Modal>}
       {editingUser       && <Modal title="Edit user" onClose={()=>setEditingUserId(null)}><EditUserForm user={editingUser} existingUsers={users} onSubmit={u=>editUser(editingUser.id,u)} onClose={()=>setEditingUserId(null)}/></Modal>}
-      {openAnimal        && <AnimalDrawer animal={openAnimal} vaccinations={vaccinations} growthRecords={growthRecords} healthEvents={healthEvents} onClose={()=>setOpenAnimalId(null)} onRecordVax={openRecordVax} onLogGrowth={openLogGrowth} onLogHealth={openLogHealth} onEditAnimal={openEditAnimal}/>}
       {openInvoice       && <InvoiceDetails invoice={openInvoice} farm={farm} onClose={()=>setOpenInvoiceId(null)} onEdit={()=>{setEditingInvoiceId(openInvoice.id);setOpenInvoiceId(null);}} onPayment={()=>{setPayingInvoiceId(openInvoice.id);setOpenInvoiceId(null);}} onTransition={action=>transitionInvoice(openInvoice.id,action)} onReversePayment={paymentId=>reverseInvoicePayment(openInvoice.id,paymentId)}/>}
     </div>
   );
@@ -3192,6 +3330,8 @@ tr.clickable:hover { background:#F3EDDD; }
 /* Drawer */
 .drawer-overlay { position:fixed;inset:0;background:rgba(42,36,25,.45);display:flex;justify-content:flex-end;z-index:60; }
 .drawer { background:var(--paper);width:100%;max-width:480px;height:100%;overflow-y:auto;padding:0 0 40px;box-shadow:-10px 0 30px rgba(0,0,0,.18);display:flex;flex-direction:column; }
+.animal-profile-page { width:100%; }
+.animal-profile { max-width:none;height:auto;min-height:calc(100vh - 150px);border:1px solid var(--line);border-radius:12px;box-shadow:none;overflow:visible; }
 .drawer__header { display:flex;align-items:flex-start;justify-content:space-between;padding:22px 22px 0;margin-bottom:14px; }
 .drawer__header h2 { font-family:'Zilla Slab',serif;font-size:21px;margin:4px 0 2px; }
 .drawer__header-actions { display:flex;align-items:center;gap:6px;flex-shrink:0; }

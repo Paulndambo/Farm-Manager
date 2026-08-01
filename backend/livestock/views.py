@@ -5,8 +5,8 @@ from rest_framework import viewsets
 from accounts.permissions import IsActiveFarmUser
 from finances.models import Expense
 
-from .models import Animal, GrowthRecord, HealthEvent, Vaccination
-from .serializers import AnimalSerializer, GrowthRecordSerializer, HealthEventSerializer, VaccinationSerializer
+from .models import Animal, GrowthRecord, HealthEvent, ProductionRecord, Vaccination
+from .serializers import AnimalSerializer, GrowthRecordSerializer, HealthEventSerializer, ProductionRecordSerializer, VaccinationSerializer
 
 
 class FarmScopedViewSet(viewsets.ModelViewSet):
@@ -53,6 +53,13 @@ class GrowthRecordViewSet(FarmScopedViewSet):
     def perform_create(self, serializer):
         record = serializer.save()
         Animal.objects.filter(id=record.animal_id).update(weight_kg=record.weight_kg)
+
+
+class ProductionRecordViewSet(FarmScopedViewSet):
+    serializer_class = ProductionRecordSerializer
+
+    def get_queryset(self):
+        return ProductionRecord.objects.filter(animal__farm=self.request.user.farm).select_related("animal")
 
 
 class HealthEventViewSet(FarmScopedViewSet):

@@ -83,6 +83,29 @@ class GrowthRecord(models.Model):
         return f"{self.animal} - {self.weight_kg}kg"
 
 
+class ProductionRecord(models.Model):
+    class ProductionType(models.TextChoices):
+        MILK = "Milk", "Milk"
+        EGGS = "Eggs", "Eggs"
+        WOOL_HIDE = "Wool / hide", "Wool / hide"
+        HONEY = "Honey", "Honey"
+        OTHER = "Other", "Other"
+
+    animal = models.ForeignKey(Animal, on_delete=models.CASCADE, related_name="production_records")
+    production_type = models.CharField(max_length=40, choices=ProductionType.choices, default=ProductionType.MILK)
+    date = models.DateField()
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit = models.CharField(max_length=30, default="litres")
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["date", "created_at"]
+
+    def __str__(self):
+        return f"{self.animal} - {self.quantity} {self.unit} {self.production_type}"
+
+
 class HealthEvent(models.Model):
     class EventType(models.TextChoices):
         OBSERVATION = "Observation", "Observation"

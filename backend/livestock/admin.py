@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Animal, GrowthRecord, HealthEvent, Vaccination
+from .models import Animal, GrowthRecord, HealthEvent, ProductionRecord, Vaccination
 
 
 @admin.register(Animal)
@@ -21,6 +21,12 @@ class VaccinationAdmin(admin.ModelAdmin):
 class GrowthRecordAdmin(admin.ModelAdmin):
     list_display = ("animal", "date", "weight_kg", "body_condition")
     list_filter = ("date",)
+
+
+@admin.register(ProductionRecord)
+class ProductionRecordAdmin(admin.ModelAdmin):
+    list_display = ("animal", "production_type", "quantity", "unit", "date")
+    list_filter = ("production_type", "date")
     search_fields = ("animal__tag_id", "animal__name")
 
 

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Animal, GrowthRecord, HealthEvent, Vaccination
+from .models import Animal, GrowthRecord, HealthEvent, ProductionRecord, Vaccination
 
 
 class AnimalSerializer(serializers.ModelSerializer):
@@ -66,6 +66,21 @@ class GrowthRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = GrowthRecord
         fields = ["id", "animalId", "date", "weightKg", "bodyCondition", "notes", "createdAt"]
+
+    def validate_animalId(self, animal):
+        if animal.farm_id != self.context["request"].user.farm_id:
+            raise serializers.ValidationError("Animal does not belong to your farm.")
+        return animal
+
+
+class ProductionRecordSerializer(serializers.ModelSerializer):
+    animalId = serializers.PrimaryKeyRelatedField(source="animal", queryset=Animal.objects.all())
+    productionType = serializers.ChoiceField(source="production_type", choices=ProductionRecord.ProductionType.choices)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = ProductionRecord
+        fields = ["id", "animalId", "productionType", "date", "quantity", "unit", "notes", "createdAt"]
 
     def validate_animalId(self, animal):
         if animal.farm_id != self.context["request"].user.farm_id:

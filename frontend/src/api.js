@@ -73,6 +73,10 @@ function normalizeAnimal(animal) {
   };
 }
 
+function normalizeProduction(record) {
+  return { ...record, quantity: toNumber(record.quantity) || 0 };
+}
+
 function normalizeFeed(item) {
   return {
     ...item,
@@ -190,11 +194,12 @@ export const api = {
   },
 
   async loadAll(currentUser) {
-    const [farm, animals, vaccinations, growth, health, feed, sales, expenses, partners, contracts, invoices, loans, users, userActions] = await Promise.all([
+    const [farm, animals, vaccinations, growth, production, health, feed, sales, expenses, partners, contracts, invoices, loans, users, userActions] = await Promise.all([
       request("/farm/"),
       request("/animals/"),
       request("/vaccinations/"),
       request("/growth-records/"),
+      request("/production-records/"),
       request("/health-events/"),
       request("/feed-items/"),
       request("/sales/"),
@@ -214,6 +219,7 @@ export const api = {
       animals: animals.map(normalizeAnimal),
       vaccinations,
       growthRecords: growth.map(record => ({ ...record, weightKg: toNumber(record.weightKg) || 0 })),
+      productionRecords: production.map(normalizeProduction),
       healthEvents: health,
       feedItems: feed.map(normalizeFeed),
       sales: sales.map(normalizeSale),
@@ -264,6 +270,14 @@ export const api = {
 
   deleteGrowthRecord(id) {
     return request(`/growth-records/${id}/`, { method: "DELETE" });
+  },
+
+  createProductionRecord(data) {
+    return request("/production-records/", { method: "POST", body: JSON.stringify(data) });
+  },
+
+  deleteProductionRecord(id) {
+    return request(`/production-records/${id}/`, { method: "DELETE" });
   },
 
   createHealthEvent(data) {

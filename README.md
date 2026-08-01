@@ -112,6 +112,7 @@ GET    /api/users/
 GET    /api/animals/
 GET    /api/vaccinations/
 GET    /api/growth-records/
+GET    /api/production-records/
 GET    /api/health-events/
 GET    /api/feed-items/
 GET    /api/feed-adjustments/
